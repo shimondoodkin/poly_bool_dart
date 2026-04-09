@@ -1,14 +1,15 @@
-name: polybool
-description: Boolean operations on polygons (union, intersection, difference, xor).
-version: 0.2.0
-homepage: https://github.com/mohammedX6/poly_bool_dart/tree/master
+name: poly_bool_arcs
+description: A starting point for Dart libraries or applications.
+version: 1.0.0
+# repository: https://github.com/my_org/my_repo
 
 environment:
-  sdk: '>=2.17.0 <4.0.0'
+  sdk: ^3.8.1
 
+# Add regular dependencies here.
 dependencies:
-  quiver: ^3.0.1+1
+  # path: ^1.8.0
 
 dev_dependencies:
-  lints: ^2.0.0
-  test: ^1.21.0
+  lints: ^5.0.0
+  test: ^1.24.0

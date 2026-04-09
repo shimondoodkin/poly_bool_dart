@@ -1,38 +1,25 @@
-// provides the raw computation functions that takes epsilon into account
-//
-// zero is defined to be between (-epsilon, epsilon) exclusive
-//
-
 import 'dart:math' as math;
 
 import 'coordinate.dart';
 import 'types.dart';
 
-Epsilon epsilon = const Epsilon();
-
+/// Numerical comparison functions with configurable epsilon tolerance.
 class Epsilon {
   final double eps;
 
-  const Epsilon({this.eps = 1e-10});
+  const Epsilon({this.eps = 1e-9});
 
+  /// Is [pt] above or on the line from [left] to [right]?
   bool pointAboveOrOnLine(Coordinate pt, Coordinate left, Coordinate right) {
-    final Ax = left.x;
-    final Ay = left.y;
-    final Bx = right.x;
-    final By = right.y;
-    final Cx = pt.x;
-    final Cy = pt.y;
-    final ABx = Bx - Ax;
-    final ABy = By - Ay;
+    final ABx = right.x - left.x;
+    final ABy = right.y - left.y;
     final AB = math.sqrt(ABx * ABx + ABy * ABy);
-    // algebraic distance of 'pt' to ('left', 'right') line is:
-    // [ABx * (Cy - Ay) - ABy * (Cx - Ax)] / AB
-    return ABx * (Cy - Ay) - ABy * (Cx - Ax) >= -eps * AB;
+    return ABx * (pt.y - left.y) - ABy * (pt.x - left.x) >= -eps * AB;
   }
 
+  /// Is [p] strictly between [left] and [right] on their line?
+  /// Returns false if p equals left or right.
   bool pointBetween(Coordinate p, Coordinate left, Coordinate right) {
-    // p must be collinear with left->right
-    // returns false if p == left, p == right, or left == right
     if (pointsSame(p, left) || pointsSame(p, right)) return false;
     final d_py_ly = p.y - left.y;
     final d_rx_lx = right.x - left.x;
@@ -40,73 +27,42 @@ class Epsilon {
     final d_ry_ly = right.y - left.y;
 
     final dot = d_px_lx * d_rx_lx + d_py_ly * d_ry_ly;
-    // dot < 0 is p is to the left of 'left'
     if (dot < 0) return false;
     final sqlen = d_rx_lx * d_rx_lx + d_ry_ly * d_ry_ly;
-    // dot <= sqlen is p is to the left of 'right'
     return dot <= sqlen;
   }
 
-  bool pointsSameX(Coordinate p1, Coordinate p2) {
-    return (p1.x - p2.x).abs() < eps;
-  }
+  bool pointsSameX(Coordinate p1, Coordinate p2) =>
+      (p1.x - p2.x).abs() < eps;
 
-  bool pointsSameY(Coordinate p1, Coordinate p2) {
-    return (p1.y - p2.y).abs() < eps;
-  }
+  bool pointsSameY(Coordinate p1, Coordinate p2) =>
+      (p1.y - p2.y).abs() < eps;
 
-  bool pointsSame(Coordinate p1, Coordinate p2) {
-    return pointsSameX(p1, p2) && pointsSameY(p1, p2);
-  }
+  bool pointsSame(Coordinate p1, Coordinate p2) =>
+      pointsSameX(p1, p2) && pointsSameY(p1, p2);
 
+  /// Compare points for sweep-line ordering: first by x, then by y.
+  /// Returns -1 if p1 < p2, 1 if p1 > p2, 0 if same.
   int pointsCompare(Coordinate p1, Coordinate p2) {
-    // returns -1 if p1 is smaller, 1 if p2 is smaller, 0 if equal
-    if (pointsSameX(p1, p2))
+    if (pointsSameX(p1, p2)) {
       return pointsSameY(p1, p2) ? 0 : (p1.y < p2.y ? -1 : 1);
+    }
     return p1.x < p2.x ? -1 : 1;
   }
 
+  /// Are three points collinear?
   bool pointsCollinear(Coordinate pt1, Coordinate pt2, Coordinate pt3) {
-    // does pt1->pt2->pt3 make a straight line?
-    // essentially this is just checking to see if the slope(pt1->pt2) === slope(pt2->pt3)
-    // if slopes are equal, then they must be collinear, because they share pt2
     final dx1 = pt1.x - pt2.x;
     final dy1 = pt1.y - pt2.y;
     final dx2 = pt2.x - pt3.x;
     final dy2 = pt2.y - pt3.y;
     final n1 = math.sqrt(dx1 * dx1 + dy1 * dy1);
     final n2 = math.sqrt(dx2 * dx2 + dy2 * dy2);
-    // Assuming det(u, v) = 0, we have:
-    // |det(u + u_err, v + v_err)| = |det(u + u_err, v + v_err) - det(u,v)|
-    // =|det(u, v_err) + det(u_err. v) + det(u_err, v_err)|
-    // <= |det(u, v_err)| + |det(u_err, v)| + |det(u_err, v_err)|
-    // <= N(u)N(v_err) + N(u_err)N(v) + N(u_err)N(v_err)
-    // <= eps * (N(u) + N(v) + eps)
-    // We have N(u) ~ N(u + u_err) and N(v) ~ N(v + v_err).
-    // Assuming eps << N(u) and eps << N(v), we end with:
-    // |det(u + u_err, v + v_err)| <= eps * (N(u + u_err) + N(v + v_err))
     return (dx1 * dy2 - dx2 * dy1).abs() <= eps * (n1 + n2);
   }
 
+  /// Line-line intersection. Returns null if segments are parallel/coincident.
   Intersection? linesIntersect(Segment a, Segment b) {
-    // returns false if the lines are coincident (e.g., parallel or on top of each other)
-    //
-    // returns an object if the lines intersect:
-    //   {
-    //     pt: [x, y],    where the intersection point is at
-    //     alongA: where intersection point is along A,
-    //     alongB: where intersection point is along B
-    //   }
-    //
-    //  alongA and alongB will each be one of: -2, -1, 0, 1, 2
-    //
-    //  with the following meaning:
-    //
-    //    -2   intersection point is before segment's first point
-    //    -1   intersection point is directly on segment's first point
-    //     0   intersection point is between segment's first and second points (exclusive)
-    //     1   intersection point is directly on segment's second point
-    //     2   intersection point is after segment's second point
     final a0 = a.start;
     final a1 = a.end;
     final b0 = b.start;
@@ -120,7 +76,7 @@ class Epsilon {
     final axb = adx * bdy - ady * bdx;
     final n1 = math.sqrt(adx * adx + ady * ady);
     final n2 = math.sqrt(bdx * bdx + bdy * bdy);
-    if ((axb).abs() <= eps * (n1 + n2)) {
+    if (axb.abs() <= eps * (n1 + n2)) {
       return null;
     }
 
@@ -132,8 +88,6 @@ class Epsilon {
 
     final pt = Coordinate(a0.x + A * adx, a0.y + A * ady);
     final intersection = Intersection(alongA: 0, alongB: 0, pt: pt);
-
-    // categorize where intersection point is along A and B
 
     if (pointsSame(pt, a0)) {
       intersection.alongA = -1;

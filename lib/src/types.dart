@@ -1,84 +1,105 @@
-import 'package:quiver/collection.dart';
-
+import 'arc_data.dart';
 import 'coordinate.dart';
-import 'linked_list.dart';
 import 'segment_fill.dart';
 
-class Transition {
-  final EventNode? above;
-  final EventNode? below;
-  final StatusNode Function() insert;
-
-  Transition({this.above, this.below, required this.insert});
-}
-
-class Intersection {
-  //  alongA and alongB will each be one of: -2, -1, 0, 1, 2
-  //
-  //  with the following meaning:
-  //
-  //    -2   intersection point is before segment's first point
-  //    -1   intersection point is directly on segment's first point
-  //     0   intersection point is between segment's first and second points (exclusive)
-  //     1   intersection point is directly on segment's second point
-  //     2   intersection point is after segment's second point
-
-  /// <summary>
-  /// where the intersection point is at
-  /// </summary>
-  final Coordinate pt;
-
-  /// <summary>
-  /// where intersection point is along A
-  /// </summary>
-  double? alongA;
-
-  /// <summary>
-  /// where intersection point is along B
-  /// </summary>
-  double? alongB;
-
-  Intersection({this.alongA, this.alongB, required this.pt});
-}
-
-class SegmentList extends DelegatingList<Segment> {
-  final List<Segment> _segments = [];
-  bool inverted = false;
-
-  @override
-  List<Segment> get delegate => _segments;
-}
-
-class CombinedSegmentLists {
-  final SegmentList combined;
-  final bool inverted1;
-  final bool inverted2;
-
-  CombinedSegmentLists(
-      {required this.combined, this.inverted1 = false, this.inverted2 = false});
-}
-
-// class PointList extends DelegatingList<Coordinate> {
-//   final List<Coordinate> _points = [];
-//
-//   @override
-//   List<Coordinate> get delegate => _points;
-// }
-
+/// A segment (edge) in the polygon — either a straight line or a circular arc.
 class Segment {
-  final Coordinate start;
+  Coordinate start;
   Coordinate end;
   SegmentFill myFill;
   SegmentFill? otherFill;
+
+  /// When non-null, this segment is a circular arc from [start] to [end].
+  /// When null, it is a straight line segment.
+  ArcData? arc;
 
   Segment({
     required this.start,
     required this.end,
     required this.myFill,
+    this.otherFill,
+    this.arc,
   });
+
+  bool get isArc => arc != null;
+  bool get isLine => arc == null;
 
   @override
   String toString() {
-    return '($start, $end)';
+    final type = arc != null ? 'Arc' : 'Line';
+    return '$type($start -> $end)';
   }
+}
+
+/// A list of segments with an inverted flag.
+class SegmentList {
+  final List<Segment> _segments = [];
+  bool inverted = false;
+
+  int get length => _segments.length;
+  bool get isEmpty => _segments.isEmpty;
+  bool get isNotEmpty => _segments.isNotEmpty;
+
+  void add(Segment seg) => _segments.add(seg);
+  Segment operator [](int index) => _segments[index];
+  Iterator<Segment> get iterator => _segments.iterator;
+
+  Iterable<Segment> get segments => _segments;
+}
+
+/// Combined segment lists from two polygons, for the boolean operation phase.
+class CombinedSegmentLists {
+  final SegmentList combined;
+  final bool inverted1;
+  final bool inverted2;
+
+  CombinedSegmentLists({
+    required this.combined,
+    this.inverted1 = false,
+    this.inverted2 = false,
+  });
+}
+
+/// Intersection result between two segments.
+class Intersection {
+  /// The intersection point.
+  final Coordinate pt;
+
+  /// Where along segment A the intersection lies:
+  /// -2 = before start, -1 = at start, 0 = between, 1 = at end, 2 = after end
+  double? alongA;
+
+  /// Where along segment B the intersection lies (same encoding).
+  double? alongB;
+
+  Intersection({required this.pt, this.alongA, this.alongB});
+}
+
+// --- Input/Output polygon types ---
+
+/// A vertex in an arc-aware polygon. The edge from this vertex to the next
+/// vertex is an arc if [arcToNext] is non-null, otherwise a straight line.
+class ArcVertex {
+  final Coordinate point;
+  final ArcData? arcToNext;
+
+  const ArcVertex({required this.point, this.arcToNext});
+
+  @override
+  String toString() => 'ArcVertex($point, arc: $arcToNext)';
+}
+
+/// A single closed region (contour) of an arc polygon.
+class ArcRegion {
+  final List<ArcVertex> vertices;
+
+  const ArcRegion(this.vertices);
+}
+
+/// A polygon with zero or more regions, supporting arc edges.
+class ArcPolygon {
+  final List<ArcRegion> regions;
+  final bool inverted;
+
+  const ArcPolygon({required this.regions, this.inverted = false});
 }

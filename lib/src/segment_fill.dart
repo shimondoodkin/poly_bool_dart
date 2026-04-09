@@ -1,10 +1,15 @@
+/// Fill status for a segment — tracks whether the region above and below
+/// this segment is filled (inside the polygon).
 class SegmentFill {
-  // NOTE: This is kind of asinine, but the original javascript code used (below === null) to determine that the edge had not
-  // yet been processed, and treated below as a standard true/false in every other case, necessitating the use of a nullable
-  // bool here.
-
   bool above;
+
+  /// null means "not yet determined" during the sweep.
   bool? below;
 
   SegmentFill({this.above = false, this.below});
+
+  SegmentFill copy() => SegmentFill(above: above, below: below);
+
+  @override
+  String toString() => 'Fill(above: $above, below: $below)';
 }

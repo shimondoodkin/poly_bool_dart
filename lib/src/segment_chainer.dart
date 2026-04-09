@@ -1,214 +1,224 @@
+import 'arc_data.dart';
 import 'coordinate.dart';
 import 'epsilon.dart';
 import 'types.dart';
 
+/// Chains segments back into closed regions, preserving arc metadata.
 class SegmentChainer {
-  List<List<Coordinate>> chains = [];
-  List<List<Coordinate>> regions = [];
+  final Epsilon eps;
 
-  List<List<Coordinate>> chain(SegmentList segments) {
-    chains.clear();
-    regions.clear();
+  SegmentChainer(this.eps);
 
-    for (final seg in segments) {
+  /// Chain segments into closed regions.
+  /// Returns a list of ArcRegion, each being a closed contour.
+  List<ArcRegion> chain(SegmentList segments) {
+    final chains = <_Chain>[];
+    final regions = <ArcRegion>[];
+
+    for (final seg in segments.segments) {
       final pt1 = seg.start;
       final pt2 = seg.end;
 
-      if (epsilon.pointsSame(pt1, pt2)) {
-        print(
-            "PolyBool: Warning: Zero-length segment detected; your epsilon is probably too small or too large");
-        continue;
-      }
+      if (eps.pointsSame(pt1, pt2)) continue;
 
-      final first_match =
-          Match(index: 0, matches_head: false, matches_pt1: false);
-      final second_match =
-          Match(index: 0, matches_head: false, matches_pt1: false);
-      Match next_match = first_match;
+      _ChainMatch? firstMatch;
+      _ChainMatch? secondMatch;
 
-      for (int i = 0; i < chains.length; ++i) {
+      for (int i = 0; i < chains.length; i++) {
         final chain = chains[i];
+        final head = chain.head;
+        final tail = chain.tail;
 
-        bool setMatch(int index, bool matchesHead, bool matchesPt1) {
-          // return true if we've matched twice
-          next_match.index = index;
-          next_match.matches_head = matchesHead;
-          next_match.matches_pt1 = matchesPt1;
-
-          if (next_match == first_match) {
-            next_match = second_match;
-            return false;
+        if (eps.pointsSame(head, pt1)) {
+          final m = _ChainMatch(index: i, matchesHead: true, matchesPt1: true);
+          if (firstMatch == null) {
+            firstMatch = m;
+          } else {
+            secondMatch = m;
+            break;
           }
-
-          next_match = Match(index: -1);
-
-          return true; // we've matched twice, we're done here
-        }
-
-        if (epsilon.pointsSame(chain.first, pt1)) {
-          if (setMatch(i, true, true)) break;
-        } else if (epsilon.pointsSame(chain.first, pt2)) {
-          if (setMatch(i, true, false)) break;
-        } else if (epsilon.pointsSame(chain.last, pt1)) {
-          if (setMatch(i, false, true)) break;
-        } else if (epsilon.pointsSame(chain.last, pt2)) {
-          if (setMatch(i, false, false)) break;
+        } else if (eps.pointsSame(head, pt2)) {
+          final m =
+              _ChainMatch(index: i, matchesHead: true, matchesPt1: false);
+          if (firstMatch == null) {
+            firstMatch = m;
+          } else {
+            secondMatch = m;
+            break;
+          }
+        } else if (eps.pointsSame(tail, pt1)) {
+          final m =
+              _ChainMatch(index: i, matchesHead: false, matchesPt1: true);
+          if (firstMatch == null) {
+            firstMatch = m;
+          } else {
+            secondMatch = m;
+            break;
+          }
+        } else if (eps.pointsSame(tail, pt2)) {
+          final m =
+              _ChainMatch(index: i, matchesHead: false, matchesPt1: false);
+          if (firstMatch == null) {
+            firstMatch = m;
+          } else {
+            secondMatch = m;
+            break;
+          }
         }
       }
 
-      if (next_match == first_match) {
-        // we didn't match anything, so create a chain
-        chains.add([pt1, pt2]);
-
+      if (firstMatch == null) {
+        // No match — start a new chain
+        chains.add(_Chain.fromSegment(pt1, pt2, seg.arc));
         continue;
       }
 
-      if (next_match == second_match) {
-        // we matched a single chain
+      if (secondMatch == null) {
+        // Matched one chain — extend it
+        final chain = chains[firstMatch.index];
+        final pt = firstMatch.matchesPt1 ? pt2 : pt1;
+        final addToHead = firstMatch.matchesHead;
 
-        // add the other point to the apporpriate end, and check to see if we've closed the
-        // chain into a loop
+        // Determine arc data: edge from pt1->pt2, so arc is for that direction
+        ArcData? arcData = seg.arc;
+        // If we matched pt2 (not pt1), we're adding pt1, meaning we traverse
+        // the edge backwards, so reverse the arc
+        if (!firstMatch.matchesPt1 && arcData != null) {
+          arcData = arcData.reversed();
+        }
 
-        final index = first_match.index;
-        final pt = first_match.matches_pt1
-            ? pt2
-            : pt1; // if we matched pt1, then we add pt2, etc
-        final addToHead = first_match
-            .matches_head; // if we matched at head, then add to the head
-
-        final chain = chains[index];
-        var grow = addToHead ? chain[0] : chain[chain.length - 1];
-        final grow2 = addToHead ? chain[1] : chain[chain.length - 2];
-        final oppo = addToHead ? chain[chain.length - 1] : chain[0];
-        final oppo2 = addToHead ? chain[chain.length - 2] : chain[1];
-
-        if (epsilon.pointsCollinear(grow2, grow, pt)) {
-          // grow isn't needed because it's directly between grow2 and pt:
-          // grow2 ---grow---> pt
+        if (eps.pointsSame(addToHead ? chain.tail : chain.head, pt)) {
+          // Closing the loop
+          // Add the final edge's arc data
           if (addToHead) {
-            chain.removeAt(0);
+            chain.prependPoint(pt, arcData);
           } else {
-            chain.removeAt(chain.length - 1);
-          }
-          grow = grow2; // old grow is gone... grow is what grow2 was
-        }
-
-        if (epsilon.pointsSame(oppo, pt)) {
-          // we're closing the loop, so remove chain from chains
-          chains.removeAt(index);
-
-          if (epsilon.pointsCollinear(oppo2, oppo, grow)) {
-            // oppo isn't needed because it's directly between oppo2 and grow:
-            // oppo2 ---oppo--->grow
-            if (addToHead) {
-              chain.removeAt(chain.length - 1);
-            } else {
-              chain.removeAt(0);
-            }
+            chain.appendPoint(pt, arcData);
           }
 
-          // we have a closed chain!
-          regions.add(chain);
-          continue;
-        }
-
-        // not closing a loop, so just add it to the apporpriate side
-        if (addToHead) {
-          chain.insert(0, pt);
+          // Build the region
+          regions.add(chain.toArcRegion());
+          chains.removeAt(firstMatch.index);
         } else {
-          chain.add(pt);
+          if (addToHead) {
+            chain.prependPoint(pt, arcData);
+          } else {
+            chain.appendPoint(pt, arcData);
+          }
         }
-
         continue;
       }
 
-      // otherwise, we matched two chains, so we need to combine those chains together
+      // Matched two chains — combine them
+      final F = firstMatch.index;
+      final S = secondMatch.index;
 
-      final F = first_match.index;
-      final S = second_match.index;
+      // Determine arc for the connecting segment
+      ArcData? arcData = seg.arc;
+      if (!firstMatch.matchesPt1 && arcData != null) {
+        arcData = arcData.reversed();
+      }
 
-      final reverseF = chains[F].length <
-          chains[S].length; // reverse the shorter chain, if needed
-      if (first_match.matches_head) {
-        if (second_match.matches_head) {
-          if (reverseF) {
-            // <<<< F <<<< --- >>>> S >>>>
-            reverseChain(F);
-            // >>>> F >>>> --- >>>> S >>>>
-            appendChain(F, S);
-          } else {
-            // <<<< F <<<< --- >>>> S >>>>
-            reverseChain(S);
-            // <<<< F <<<< --- <<<< S <<<<   logically same as:
-            // >>>> S >>>> --- >>>> F >>>>
-            appendChain(S, F);
-          }
+      final chainF = chains[F];
+      final chainS = chains[S];
+
+      if (firstMatch.matchesHead) {
+        if (secondMatch.matchesHead) {
+          chainS.reverse();
+          chainS.appendArcToChain(chainF, arcData);
+          chains.removeAt(F);
         } else {
-          // <<<< F <<<< --- <<<< S <<<<   logically same as:
-          // >>>> S >>>> --- >>>> F >>>>
-          appendChain(S, F);
+          chainS.appendArcToChain(chainF, arcData);
+          chains.removeAt(F);
         }
       } else {
-        if (second_match.matches_head) {
-          // >>>> F >>>> --- >>>> S >>>>
-          appendChain(F, S);
+        if (secondMatch.matchesHead) {
+          chainF.appendArcToChain(chainS, arcData);
+          chains.removeAt(S);
         } else {
-          if (reverseF) {
-            // >>>> F >>>> --- <<<< S <<<<
-            reverseChain(F);
-            // <<<< F <<<< --- <<<< S <<<<   logically same as:
-            // >>>> S >>>> --- >>>> F >>>>
-            appendChain(S, F);
-          } else {
-            // >>>> F >>>> --- <<<< S <<<<
-            reverseChain(S);
-            // >>>> F >>>> --- >>>> S >>>>
-            appendChain(F, S);
-          }
+          chainS.reverse();
+          chainF.appendArcToChain(chainS, arcData);
+          chains.removeAt(S);
         }
       }
     }
 
     return regions;
   }
+}
 
-  void reverseChain(int index) {
-    List<Coordinate> pointList = [];
-    pointList.addAll(chains[index].reversed.toList());
-    chains[index] = pointList; // gee, that's easy
+class _ChainMatch {
+  final int index;
+  final bool matchesHead;
+  final bool matchesPt1;
+
+  _ChainMatch({
+    required this.index,
+    required this.matchesHead,
+    required this.matchesPt1,
+  });
+}
+
+/// Internal chain structure that tracks points and arc data for edges.
+class _Chain {
+  // Points and arcs stored as parallel lists.
+  // points[i] is a vertex, arcs[i] is the arc data for edge from points[i] to points[i+1].
+  // arcs.length == points.length - 1 (or 0 if only 1 point).
+  final List<Coordinate> points;
+  final List<ArcData?> arcs;
+
+  _Chain(this.points, this.arcs);
+
+  factory _Chain.fromSegment(Coordinate p1, Coordinate p2, ArcData? arc) {
+    return _Chain([p1, p2], [arc]);
   }
 
-  void appendChain(int index1, int index2) {
-    // index1 gets index2 appended to it, and index2 is removed
-    final chain1 = chains[index1];
-    final chain2 = chains[index2];
-    var tail = chain1[chain1.length - 1];
-    final tail2 = chain1[chain1.length - 2];
-    final head = chain2[0];
-    final head2 = chain2[1];
+  Coordinate get head => points.first;
+  Coordinate get tail => points.last;
 
-    if (epsilon.pointsCollinear(tail2, tail, head)) {
-      // tail isn't needed because it's directly between tail2 and head
-      // tail2 ---tail---> head
-      chain1.removeAt(chain1.length - 1);
-      tail = tail2; // old tail is gone... tail is what tail2 was
+  void appendPoint(Coordinate pt, ArcData? arcToNew) {
+    arcs.add(arcToNew);
+    points.add(pt);
+  }
+
+  void prependPoint(Coordinate pt, ArcData? arcFromNew) {
+    // arcFromNew describes the edge from pt -> current head
+    arcs.insert(0, arcFromNew);
+    points.insert(0, pt);
+  }
+
+  void reverse() {
+    final revPoints = points.reversed.toList();
+    final revArcs = arcs.reversed.map((a) => a?.reversed()).toList();
+    points.clear();
+    points.addAll(revPoints);
+    arcs.clear();
+    arcs.addAll(revArcs);
+  }
+
+  /// Append another chain to the end of this one, with a connecting arc.
+  void appendArcToChain(_Chain other, ArcData? connectingArc) {
+    arcs.add(connectingArc);
+    // Include all points of other — the first point is the destination
+    // of the connecting arc, not a duplicate of our tail.
+    for (int i = 0; i < other.points.length; i++) {
+      points.add(other.points[i]);
     }
-
-    if (epsilon.pointsCollinear(tail, head, head2)) {
-      // head isn't needed because it's directly between tail and head2
-      // tail ---head---> head2
-      chain2.removeAt(0);
+    for (int i = 0; i < other.arcs.length; i++) {
+      arcs.add(other.arcs[i]);
     }
+  }
 
-    chain1.addAll(chain2);
-    chains.removeAt(index2);
+  ArcRegion toArcRegion() {
+    // The chain is closed: first point == last point (or close enough).
+    // Build ArcVertex list — exclude the duplicate closing point.
+    final n = points.length - 1; // last point is same as first
+    final vertices = <ArcVertex>[];
+    for (int i = 0; i < n; i++) {
+      final arcToNext = i < arcs.length ? arcs[i] : null;
+      vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
+    }
+    return ArcRegion(vertices);
   }
 }
 
-class Match {
-  int index;
-  bool matches_head;
-  bool matches_pt1;
-
-  Match({this.index = 0, this.matches_head = false, this.matches_pt1 = false});
-}

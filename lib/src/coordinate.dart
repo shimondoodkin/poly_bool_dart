@@ -1,13 +1,25 @@
-class Coordinate {
-  double x;
-  double y;
+import 'dart:math' as math;
 
-  Coordinate(this.x, this.y);
+/// A 2D point/coordinate.
+class Coordinate {
+  final double x;
+  final double y;
+
+  const Coordinate(this.x, this.y);
+
+  Coordinate operator +(Coordinate other) =>
+      Coordinate(x + other.x, y + other.y);
+  Coordinate operator -(Coordinate other) =>
+      Coordinate(x - other.x, y - other.y);
+  Coordinate operator *(double s) => Coordinate(x * s, y * s);
+
+  double dot(Coordinate other) => x * other.x + y * other.y;
+  double cross(Coordinate other) => x * other.y - y * other.x;
+  double get lengthSquared => x * x + y * y;
+  double get length => math.sqrt(lengthSquared);
 
   @override
-  String toString() {
-    return "($x, $y)";
-  }
+  String toString() => '($x, $y)';
 
   @override
   bool operator ==(Object other) =>
