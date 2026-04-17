@@ -113,10 +113,34 @@ class Intersecter {
           true,
         );
       } else {
+        // Snap both endpoints to the arc's circle before ingest. User-
+        // supplied polygons often have small floating-point drift between
+        // the declared circle (center, radius) and the actual vertex
+        // positions. Downstream math (sub-arc splitting, intersections)
+        // uses the declared circle, so we must project endpoints onto it
+        // to keep the internal representation self-consistent.
+        final snap1 = _snapToArcCircle(pt1, arc.center, arc.radius);
+        final snap2 = _snapToArcCircle(pt2, arc.center, arc.radius);
         // Arc segment — split at y-extremes for sweep-line correctness
-        _addArcSubSegments(pt1, pt2, arc);
+        _addArcSubSegments(snap1, snap2, arc);
       }
     }
+  }
+
+  /// Project [p] onto the circle at [center] with [radius]. If [p] is at
+  /// the center (degenerate), returns (center.x + radius, center.y).
+  Coordinate _snapToArcCircle(Coordinate p, Coordinate center, double radius) {
+    final dx = p.x - center.x;
+    final dy = p.y - center.y;
+    final len2 = dx * dx + dy * dy;
+    if (len2 < 1e-18) {
+      return Coordinate(center.x + radius, center.y);
+    }
+    final scale = radius / math.sqrt(len2);
+    // If already on the circle within a very tight tolerance, return as-is
+    // to avoid microscopic perturbation.
+    if ((scale - 1.0).abs() < 1e-12) return p;
+    return Coordinate(center.x + dx * scale, center.y + dy * scale);
   }
 
   /// Split an arc at its y-extreme points (top/bottom of circle) and at
