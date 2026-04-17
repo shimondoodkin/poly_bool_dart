@@ -71,10 +71,6 @@ class SegmentChainer {
 
       if (firstMatch == null) {
         // No match — start a new chain
-        // ignore: avoid_print
-        print('[TRACE chainer NEWCHAIN] segCW=${seg.arc?.clockwise} '
-            'pt1=(${pt1.x}, ${pt1.y}) pt2=(${pt2.x}, ${pt2.y}) '
-            'center=${seg.arc?.center} r=${seg.arc?.radius}');
         chains.add(_Chain.fromSegment(pt1, pt2, seg.arc));
         continue;
       }
@@ -102,13 +98,6 @@ class SegmentChainer {
             arcData != null) {
           arcData = arcData.reversed();
         }
-
-        // ignore: avoid_print
-        print('[TRACE chainer EXTEND] segCW=${seg.arc?.clockwise} '
-            'matchesPt1=${firstMatch.matchesPt1} matchesHead=${firstMatch.matchesHead} '
-            'finalArcCW=${arcData?.clockwise} addToHead=$addToHead '
-            'pt1=(${pt1.x}, ${pt1.y}) pt2=(${pt2.x}, ${pt2.y}) '
-            'newPt=(${pt.x}, ${pt.y})');
 
         if (eps.pointsSame(addToHead ? chain.tail : chain.head, pt)) {
           // Closing the loop
@@ -146,14 +135,6 @@ class SegmentChainer {
           arcData != null) {
         arcData = arcData.reversed();
       }
-
-      // ignore: avoid_print
-      print('[TRACE chainer COMBINE] segCW=${seg.arc?.clockwise} '
-          'matchesPt1=${firstMatch.matchesPt1} '
-          'firstMatchesHead=${firstMatch.matchesHead} '
-          'secondMatchesHead=${secondMatch.matchesHead} '
-          'finalArcCW=${arcData?.clockwise} '
-          'pt1=(${pt1.x}, ${pt1.y}) pt2=(${pt2.x}, ${pt2.y})');
 
       final chainF = chains[F];
       final chainS = chains[S];
@@ -272,13 +253,6 @@ class _Chain {
           }
           return true;
         }(), 'arc emission endpoints must lie on the arc circle');
-      }
-      if (arcToNext != null) {
-        // ignore: avoid_print
-        print('[TRACE chainer EMIT] cw=${arcToNext.clockwise} '
-            'start=(${points[i].x}, ${points[i].y}) '
-            'end=(${points[i + 1].x}, ${points[i + 1].y}) '
-            'center=${arcToNext.center} r=${arcToNext.radius}');
       }
       vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
     }
