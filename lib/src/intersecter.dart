@@ -193,6 +193,12 @@ class Intersecter {
         subArc = arc.reversed();
       }
 
+      // ignore: avoid_print
+      print('[TRACE subArc EMIT] swapped=$swapped '
+          'origCW=${arc.clockwise} subArcCW=${subArc.clockwise} '
+          'start=(${start.x}, ${start.y}) end=(${end.x}, ${end.y}) '
+          'center=(${arc.center.x}, ${arc.center.y}) r=${arc.radius}');
+
       eventAddSegment(segmentNew(start, end, arc: subArc), true);
     }
   }

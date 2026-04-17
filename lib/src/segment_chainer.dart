@@ -71,6 +71,10 @@ class SegmentChainer {
 
       if (firstMatch == null) {
         // No match — start a new chain
+        // ignore: avoid_print
+        print('[TRACE chainer NEWCHAIN] segCW=${seg.arc?.clockwise} '
+            'pt1=(${pt1.x}, ${pt1.y}) pt2=(${pt2.x}, ${pt2.y}) '
+            'center=${seg.arc?.center} r=${seg.arc?.radius}');
         chains.add(_Chain.fromSegment(pt1, pt2, seg.arc));
         continue;
       }
@@ -81,13 +85,30 @@ class SegmentChainer {
         final pt = firstMatch.matchesPt1 ? pt2 : pt1;
         final addToHead = firstMatch.matchesHead;
 
-        // Determine arc data: edge from pt1->pt2, so arc is for that direction
+        // Determine arc data: edge from pt1->pt2, so arc is for that
+        // direction. Whether the chain will walk this edge forward
+        // (pt1→pt2) or backward (pt2→pt1) depends on BOTH which chain
+        // endpoint was matched (head vs tail) AND which seg endpoint was
+        // matched (pt1 vs pt2):
+        //   - prepend pt1 at head (matchesHead=T, matchesPt1=F) or
+        //     append pt2 at tail (matchesHead=F, matchesPt1=T) ⇒ walks
+        //     seg forward ⇒ keep arc as-is.
+        //   - prepend pt2 at head (matchesHead=T, matchesPt1=T) or
+        //     append pt1 at tail (matchesHead=F, matchesPt1=F) ⇒ walks
+        //     seg backward ⇒ reverse arc.
+        // i.e. reverse iff matchesHead == matchesPt1.
         ArcData? arcData = seg.arc;
-        // If we matched pt2 (not pt1), we're adding pt1, meaning we traverse
-        // the edge backwards, so reverse the arc
-        if (!firstMatch.matchesPt1 && arcData != null) {
+        if (firstMatch.matchesHead == firstMatch.matchesPt1 &&
+            arcData != null) {
           arcData = arcData.reversed();
         }
+
+        // ignore: avoid_print
+        print('[TRACE chainer EXTEND] segCW=${seg.arc?.clockwise} '
+            'matchesPt1=${firstMatch.matchesPt1} matchesHead=${firstMatch.matchesHead} '
+            'finalArcCW=${arcData?.clockwise} addToHead=$addToHead '
+            'pt1=(${pt1.x}, ${pt1.y}) pt2=(${pt2.x}, ${pt2.y}) '
+            'newPt=(${pt.x}, ${pt.y})');
 
         if (eps.pointsSame(addToHead ? chain.tail : chain.head, pt)) {
           // Closing the loop
@@ -115,11 +136,24 @@ class SegmentChainer {
       final F = firstMatch.index;
       final S = secondMatch.index;
 
-      // Determine arc for the connecting segment
+      // Determine arc for the connecting segment. Same reversal rule as
+      // the single-chain EXTEND case above: the combined chain walks
+      // this segment forward (seg.pt1 → seg.pt2) when `matchesHead !=
+      // matchesPt1`, and backward otherwise. See the detailed case
+      // analysis in the EXTEND branch for justification.
       ArcData? arcData = seg.arc;
-      if (!firstMatch.matchesPt1 && arcData != null) {
+      if (firstMatch.matchesHead == firstMatch.matchesPt1 &&
+          arcData != null) {
         arcData = arcData.reversed();
       }
+
+      // ignore: avoid_print
+      print('[TRACE chainer COMBINE] segCW=${seg.arc?.clockwise} '
+          'matchesPt1=${firstMatch.matchesPt1} '
+          'firstMatchesHead=${firstMatch.matchesHead} '
+          'secondMatchesHead=${secondMatch.matchesHead} '
+          'finalArcCW=${arcData?.clockwise} '
+          'pt1=(${pt1.x}, ${pt1.y}) pt2=(${pt2.x}, ${pt2.y})');
 
       final chainF = chains[F];
       final chainS = chains[S];
@@ -238,6 +272,13 @@ class _Chain {
           }
           return true;
         }(), 'arc emission endpoints must lie on the arc circle');
+      }
+      if (arcToNext != null) {
+        // ignore: avoid_print
+        print('[TRACE chainer EMIT] cw=${arcToNext.clockwise} '
+            'start=(${points[i].x}, ${points[i].y}) '
+            'end=(${points[i + 1].x}, ${points[i + 1].y}) '
+            'center=${arcToNext.center} r=${arcToNext.radius}');
       }
       vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
     }
