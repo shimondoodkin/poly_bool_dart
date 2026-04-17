@@ -437,6 +437,55 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     });
   }
 
+  ArcPolygon _insertVertexAfter(ArcPolygon p, Selection s) {
+    final regions = List<ArcRegion>.of(p.regions);
+    final verts = List<ArcVertex>.of(regions[s.regionIndex].vertices);
+    final selV = verts[s.vertexIndex];
+    final newV = ArcVertex(
+        point: Coordinate(selV.point.x + 20, selV.point.y + 20));
+    verts.insert(s.vertexIndex + 1, newV);
+    regions[s.regionIndex] = ArcRegion(verts);
+    return ArcPolygon(regions: regions, inverted: p.inverted);
+  }
+
+  ArcPolygon _deleteVertex(ArcPolygon p, Selection s) {
+    final regions = List<ArcRegion>.of(p.regions);
+    final verts = List<ArcVertex>.of(regions[s.regionIndex].vertices);
+    if (verts.length < 4) return p; // keep valid closed polygon
+    verts.removeAt(s.vertexIndex);
+    regions[s.regionIndex] = ArcRegion(verts);
+    return ArcPolygon(regions: regions, inverted: p.inverted);
+  }
+
+  void _addSegmentAfter() {
+    final sel = _inputSelection;
+    if (sel == null) return;
+    setState(() {
+      if (_inputSelectionOnA) {
+        _a = _insertVertexAfter(_a, sel);
+      } else {
+        _b = _insertVertexAfter(_b, sel);
+      }
+      _inputSelection = Selection(sel.regionIndex, sel.vertexIndex + 1);
+    });
+  }
+
+  void _deleteSelectedVertex() {
+    final sel = _inputSelection;
+    if (sel == null) return;
+    final poly = _inputSelectionOnA ? _a : _b;
+    if (poly.regions[sel.regionIndex].vertices.length < 4) return;
+    setState(() {
+      if (_inputSelectionOnA) {
+        _a = _deleteVertex(_a, sel);
+      } else {
+        _b = _deleteVertex(_b, sel);
+      }
+      final newLen = (_inputSelectionOnA ? _a : _b).regions[sel.regionIndex].vertices.length;
+      _inputSelection = Selection(sel.regionIndex, sel.vertexIndex % newLen);
+    });
+  }
+
   Widget _buildSegmentPanel() {
     final sel = _inputSelection;
     if (sel == null) {
@@ -475,8 +524,22 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Selected segment',
-              style: TextStyle(fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Selected segment',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              Row(children: [
+                OutlinedButton(
+                    onPressed: _addSegmentAfter,
+                    child: const Text('+ Segment after')),
+                const SizedBox(width: 6),
+                OutlinedButton(
+                    onPressed: _deleteSelectedVertex,
+                    child: const Text('Delete vertex')),
+              ]),
+            ],
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
