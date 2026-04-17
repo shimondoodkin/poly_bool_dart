@@ -794,6 +794,47 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     );
   }
 
+  String _buildStateSnippet() {
+    final buf = StringBuffer();
+    buf.writeln('final a = ${_polygonLiteral(_a)};');
+    buf.writeln('final b = ${_polygonLiteral(_b)};');
+    buf.writeln('final op = BoolOp.${_op.name};');
+    return buf.toString();
+  }
+
+  String _polygonLiteral(ArcPolygon p) {
+    final buf = StringBuffer();
+    buf.write('ArcPolygon(regions: [');
+    for (final region in p.regions) {
+      buf.writeln();
+      buf.write('  ArcRegion([');
+      for (final v in region.vertices) {
+        buf.writeln();
+        final x = v.point.x.toStringAsFixed(1);
+        final y = v.point.y.toStringAsFixed(1);
+        if (v.arcToNext == null) {
+          buf.write('    ArcVertex(point: Coordinate($x, $y)),');
+        } else {
+          final arc = v.arcToNext!;
+          final cx = arc.center.x.toStringAsFixed(1);
+          final cy = arc.center.y.toStringAsFixed(1);
+          final r = arc.radius.toStringAsFixed(1);
+          buf.write('    ArcVertex(point: Coordinate($x, $y),');
+          buf.writeln();
+          buf.write('        arcToNext: ArcData(center: Coordinate($cx, $cy), '
+              'radius: $r, clockwise: ${arc.clockwise})),');
+        }
+      }
+      buf.writeln();
+      buf.write('  ]),');
+    }
+    buf.writeln();
+    buf.write(']');
+    if (p.inverted) buf.write(', inverted: true');
+    buf.write(')');
+    return buf.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -925,7 +966,26 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
             ),
             const SizedBox(height: 10),
             _buildResultPanel(),
-            const SizedBox(height: 40),
+            const SizedBox(height: 16),
+            const Text('Current state (copy to reproduce)',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 600,
+              child: TextField(
+                controller: TextEditingController(text: _buildStateSnippet()),
+                readOnly: true,
+                maxLines: null,
+                minLines: 10,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.all(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
