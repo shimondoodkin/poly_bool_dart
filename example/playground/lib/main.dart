@@ -218,6 +218,31 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
   /// Selection in the result canvas (read-only). null = nothing selected.
   Selection? _resultSelection;
 
+  static const double _vertexHitRadius = 10.0;
+
+  /// Returns the selection for the vertex nearest to [tap] within hit
+  /// radius, searching A then B. Returns null if no vertex is close.
+  ({bool onA, Selection sel})? _hitTestVertex(Offset tap) {
+    ({bool onA, Selection sel})? best;
+    double bestD = _vertexHitRadius;
+    void test(ArcPolygon p, bool onA) {
+      for (int ri = 0; ri < p.regions.length; ri++) {
+        final verts = p.regions[ri].vertices;
+        for (int vi = 0; vi < verts.length; vi++) {
+          final d = (tap - Offset(verts[vi].point.x, verts[vi].point.y))
+              .distance;
+          if (d < bestD) {
+            bestD = d;
+            best = (onA: onA, sel: Selection(ri, vi));
+          }
+        }
+      }
+    }
+    test(_a, true);
+    test(_b, false);
+    return best;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -237,14 +262,24 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                   color: Colors.white,
                   border: Border.all(color: Colors.grey.shade400),
                 ),
-                child: CustomPaint(
-                  painter: PolygonPainter(
-                    polygons: [
-                      (polygon: _a, color: Colors.blue.shade700),
-                      (polygon: _b, color: Colors.orange.shade800),
-                    ],
-                    selection: _inputSelection,
-                    selectionOnFirst: _inputSelectionOnA,
+                child: GestureDetector(
+                  onTapDown: (d) {
+                    final hit = _hitTestVertex(d.localPosition);
+                    if (hit == null) return;
+                    setState(() {
+                      _inputSelection = hit.sel;
+                      _inputSelectionOnA = hit.onA;
+                    });
+                  },
+                  child: CustomPaint(
+                    painter: PolygonPainter(
+                      polygons: [
+                        (polygon: _a, color: Colors.blue.shade700),
+                        (polygon: _b, color: Colors.orange.shade800),
+                      ],
+                      selection: _inputSelection,
+                      selectionOnFirst: _inputSelectionOnA,
+                    ),
                   ),
                 ),
               ),
