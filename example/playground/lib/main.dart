@@ -206,6 +206,57 @@ class PolygonPainter extends CustomPainter {
       old.selectionOnFirst != selectionOnFirst;
 }
 
+/// Numeric text field that reports changes via [onChanged]. Used so the
+/// panel inputs can drive polygon edits.
+class _NumberField extends StatefulWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+  final double width;
+  const _NumberField({
+    required this.value,
+    required this.onChanged,
+    this.width = 60,
+  });
+
+  @override
+  State<_NumberField> createState() => _NumberFieldState();
+}
+
+class _NumberFieldState extends State<_NumberField> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.value.toStringAsFixed(1));
+
+  @override
+  void didUpdateWidget(covariant _NumberField old) {
+    super.didUpdateWidget(old);
+    final formatted = widget.value.toStringAsFixed(1);
+    if (_c.text != formatted) _c.text = formatted;
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width,
+      child: TextField(
+        controller: _c,
+        decoration: const InputDecoration(
+            isDense: true, contentPadding: EdgeInsets.all(6)),
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        onSubmitted: (s) {
+          final n = double.tryParse(s);
+          if (n != null) widget.onChanged(n);
+        },
+      ),
+    );
+  }
+}
+
 class _PlaygroundPageState extends State<PlaygroundPage> {
   late ArcPolygon _a = _initialPolygonA();
   late ArcPolygon _b = _initialPolygonB();
@@ -296,6 +347,91 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
   bool _draggingPolygonA = false;
   bool _draggingPolygonB = false;
   Offset _lastDragPos = Offset.zero;
+
+  Widget _buildSegmentPanel() {
+    final sel = _inputSelection;
+    if (sel == null) {
+      return Container(
+        width: 600,
+        padding: const EdgeInsets.all(10),
+        color: Colors.grey.shade100,
+        child: const Text('Click a vertex to select',
+            style: TextStyle(color: Colors.grey)),
+      );
+    }
+    final poly = _inputSelectionOnA ? _a : _b;
+    final color = _inputSelectionOnA ? Colors.blue.shade700 : Colors.orange.shade800;
+    final verts = poly.regions[sel.regionIndex].vertices;
+    final selV = verts[sel.vertexIndex];
+    final prevV = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
+
+    void updateVertex(int vi, Offset pos) {
+      setState(() {
+        final s = Selection(sel.regionIndex, vi);
+        if (_inputSelectionOnA) {
+          _a = _withMovedVertex(_a, s, pos);
+        } else {
+          _b = _withMovedVertex(_b, s, pos);
+        }
+      });
+    }
+
+    return Container(
+      width: 600,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Selected segment',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(width: 14, height: 14,
+                  decoration: BoxDecoration(color: Colors.white,
+                      border: Border.all(color: color, width: 2))),
+              const SizedBox(width: 6),
+              const Text('a · left ', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              _NumberField(
+                value: prevV.point.x,
+                onChanged: (x) => updateVertex(
+                    (sel.vertexIndex - 1 + verts.length) % verts.length,
+                    Offset(x, prevV.point.y)),
+              ),
+              const SizedBox(width: 8),
+              const Text('top ', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              _NumberField(
+                value: prevV.point.y,
+                onChanged: (y) => updateVertex(
+                    (sel.vertexIndex - 1 + verts.length) % verts.length,
+                    Offset(prevV.point.x, y)),
+              ),
+              const SizedBox(width: 24),
+              Container(width: 14, height: 14, color: color),
+              const SizedBox(width: 6),
+              const Text('b · left ', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              _NumberField(
+                value: selV.point.x,
+                onChanged: (x) => updateVertex(
+                    sel.vertexIndex, Offset(x, selV.point.y)),
+              ),
+              const SizedBox(width: 8),
+              const Text('top ', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              _NumberField(
+                value: selV.point.y,
+                onChanged: (y) => updateVertex(
+                    sel.vertexIndex, Offset(selV.point.x, y)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -392,6 +528,8 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            _buildSegmentPanel(),
           ],
         ),
       ),
