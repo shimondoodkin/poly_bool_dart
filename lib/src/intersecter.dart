@@ -318,25 +318,37 @@ class Intersecter {
 
     if (points.isEmpty) return;
 
+    // Deduplicate near-identical points
+    final unique = <Coordinate>[];
+    for (final pt in points) {
+      if (unique.every((u) => !eps.pointsSame(u, pt))) {
+        unique.add(pt);
+      }
+    }
+
     // Sort by sweep order
-    final sorted = List<Coordinate>.from(points);
+    final sorted = List<Coordinate>.from(unique);
     sorted.sort((a, b) => eps.pointsCompare(a, b));
 
+    // See _checkArcArcIntersection for the rationale: we must keep pointing
+    // `curArc`/`curLine` at the right-hand piece after each split, because
+    // `eventDivide(ev, pt)` shortens `ev` to [start, pt] and returns a new
+    // event covering [pt, old_end]. Subsequent points lie on the new event.
+    EventNode curArc = arcEv;
+    EventNode curLine = lineEv;
     for (final pt in sorted) {
-      final atArcStart = eps.pointsSame(pt, arcEv.seg.start);
-      final atArcEnd = eps.pointsSame(pt, arcEv.seg.end);
-      final atLineStart = eps.pointsSame(pt, lineEv.seg.start);
-      final atLineEnd = eps.pointsSame(pt, lineEv.seg.end);
-
-      // Split the line if the point is strictly inside it
-      if (!atLineStart && !atLineEnd &&
-          eps.pointBetween(pt, lineEv.seg.start, lineEv.seg.end)) {
-        eventDivide(lineEv, pt);
+      // Line side
+      if (!eps.pointsSame(pt, curLine.seg.start) &&
+          !eps.pointsSame(pt, curLine.seg.end) &&
+          eps.pointBetween(pt, curLine.seg.start, curLine.seg.end)) {
+        curLine = eventDivide(curLine, pt);
       }
 
-      // Split the arc if the point is strictly inside it
-      if (!atArcStart && !atArcEnd) {
-        eventDivide(arcEv, pt);
+      // Arc side
+      if (!eps.pointsSame(pt, curArc.seg.start) &&
+          !eps.pointsSame(pt, curArc.seg.end) &&
+          _ptBetweenArcEndpoints(pt, curArc.seg.start, curArc.seg.end)) {
+        curArc = eventDivide(curArc, pt);
       }
     }
   }
@@ -356,19 +368,53 @@ class Intersecter {
 
     if (points.isEmpty) return;
 
-    final sorted = List<Coordinate>.from(points);
-    sorted.sort((a, b) => eps.pointsCompare(a, b));
-
-    for (final pt in sorted) {
-      if (!eps.pointsSame(pt, ev1.seg.start) &&
-          !eps.pointsSame(pt, ev1.seg.end)) {
-        eventDivide(ev1, pt);
-      }
-      if (!eps.pointsSame(pt, ev2.seg.start) &&
-          !eps.pointsSame(pt, ev2.seg.end)) {
-        eventDivide(ev2, pt);
+    // Deduplicate near-identical points (circleCircle can return two copies of
+    // the same tangent-ish point with tiny fp drift).
+    final unique = <Coordinate>[];
+    for (final pt in points) {
+      if (unique.every((u) => !eps.pointsSame(u, pt))) {
+        unique.add(pt);
       }
     }
+
+    final sorted = List<Coordinate>.from(unique);
+    sorted.sort((a, b) => eps.pointsCompare(a, b));
+
+    // IMPORTANT: after `eventDivide(ev, pt)`, ev's segment is shortened to
+    // [start, pt] and a new event covers [pt, old_end]. A subsequent interior
+    // intersection lies on the NEW event, not on the shortened `ev`. We must
+    // walk forward along the chain, re-pointing `ev1`/`ev2` at the right-hand
+    // piece after each split. Otherwise a later `eventDivide` call on the
+    // original `ev` uses `eventUpdateEnd`, which REPLACES the (already
+    // shortened) end with the later point and thereby EXTENDS the segment
+    // past its earlier split — producing an infinite loop as the same
+    // intersection keeps recurring.
+    EventNode cur1 = ev1;
+    EventNode cur2 = ev2;
+    for (final pt in sorted) {
+      // ev1 side
+      if (!eps.pointsSame(pt, cur1.seg.start) &&
+          !eps.pointsSame(pt, cur1.seg.end) &&
+          _ptBetweenArcEndpoints(pt, cur1.seg.start, cur1.seg.end)) {
+        cur1 = eventDivide(cur1, pt);
+      }
+      // ev2 side
+      if (!eps.pointsSame(pt, cur2.seg.start) &&
+          !eps.pointsSame(pt, cur2.seg.end) &&
+          _ptBetweenArcEndpoints(pt, cur2.seg.start, cur2.seg.end)) {
+        cur2 = eventDivide(cur2, pt);
+      }
+    }
+  }
+
+  /// True when [pt] lies strictly in the sweep-order interval
+  /// (start, end) — used as a cheap guard to avoid dividing at the
+  /// current segment endpoints (or outside them entirely).
+  bool _ptBetweenArcEndpoints(
+      Coordinate pt, Coordinate start, Coordinate end) {
+    final cs = eps.pointsCompare(pt, start);
+    final ce = eps.pointsCompare(pt, end);
+    return cs > 0 && ce < 0;
   }
 
   EventNode? checkBothIntersections(
