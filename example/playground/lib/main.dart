@@ -257,6 +257,32 @@ class _NumberFieldState extends State<_NumberField> {
   }
 }
 
+class _TypePill extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _TypePill({required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: active ? Colors.blue.shade700 : Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: active ? Colors.white : Colors.black87,
+                fontFamily: 'monospace',
+                fontSize: 12)),
+      ),
+    );
+  }
+}
+
 class _PlaygroundPageState extends State<PlaygroundPage> {
   late ArcPolygon _a = _initialPolygonA();
   late ArcPolygon _b = _initialPolygonB();
@@ -348,6 +374,69 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
   bool _draggingPolygonB = false;
   Offset _lastDragPos = Offset.zero;
 
+  /// Default arc when flipping a segment from line to arc. Chord midpoint
+  /// offset perpendicular by chord/4 to the "right" of walk direction.
+  ArcData _defaultArcFor(Coordinate a, Coordinate b) {
+    final mx = (a.x + b.x) / 2;
+    final my = (a.y + b.y) / 2;
+    final dx = b.x - a.x;
+    final dy = b.y - a.y;
+    final len = math.sqrt(dx * dx + dy * dy);
+    final offset = len / 4;
+    // perpendicular to chord, pointing "right" of a→b in screen coords
+    final nx = dy / len;
+    final ny = -dx / len;
+    final cx = mx + nx * offset;
+    final cy = my + ny * offset;
+    final r = math.sqrt((a.x - cx) * (a.x - cx) + (a.y - cy) * (a.y - cy));
+    return ArcData(
+        center: Coordinate(cx, cy), radius: r, clockwise: false);
+  }
+
+  ArcPolygon _withArcOnSegment(ArcPolygon p, Selection s, ArcData? arc) {
+    final regions = List<ArcRegion>.of(p.regions);
+    final verts = List<ArcVertex>.of(regions[s.regionIndex].vertices);
+    final prevVi = (s.vertexIndex - 1 + verts.length) % verts.length;
+    final prev = verts[prevVi];
+    verts[prevVi] = ArcVertex(point: prev.point, arcToNext: arc);
+    regions[s.regionIndex] = ArcRegion(verts);
+    return ArcPolygon(regions: regions, inverted: p.inverted);
+  }
+
+  void _setSelectedSegmentType(bool asArc) {
+    final sel = _inputSelection;
+    if (sel == null) return;
+    final poly = _inputSelectionOnA ? _a : _b;
+    final verts = poly.regions[sel.regionIndex].vertices;
+    final prev = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
+    final selV = verts[sel.vertexIndex];
+    final newArc = asArc ? _defaultArcFor(prev.point, selV.point) : null;
+    setState(() {
+      if (_inputSelectionOnA) {
+        _a = _withArcOnSegment(_a, sel, newArc);
+      } else {
+        _b = _withArcOnSegment(_b, sel, newArc);
+      }
+    });
+  }
+
+  void _updateSelectedArc(ArcData Function(ArcData current) transform) {
+    final sel = _inputSelection;
+    if (sel == null) return;
+    final poly = _inputSelectionOnA ? _a : _b;
+    final verts = poly.regions[sel.regionIndex].vertices;
+    final prev = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
+    if (prev.arcToNext == null) return;
+    final next = transform(prev.arcToNext!);
+    setState(() {
+      if (_inputSelectionOnA) {
+        _a = _withArcOnSegment(_a, sel, next);
+      } else {
+        _b = _withArcOnSegment(_b, sel, next);
+      }
+    });
+  }
+
   Widget _buildSegmentPanel() {
     final sel = _inputSelection;
     if (sel == null) {
@@ -428,6 +517,55 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Builder(builder: (context) {
+            final poly = _inputSelectionOnA ? _a : _b;
+            final verts = poly.regions[sel.regionIndex].vertices;
+            final prevVi = (sel.vertexIndex - 1 + verts.length) % verts.length;
+            final isArc = verts[prevVi].arcToNext != null;
+            final arc = verts[prevVi].arcToNext;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('segment type:',
+                        style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                    const SizedBox(width: 8),
+                    _TypePill(label: 'line', active: !isArc,
+                        onTap: () => _setSelectedSegmentType(false)),
+                    const SizedBox(width: 6),
+                    _TypePill(label: 'arc', active: isArc,
+                        onTap: () => _setSelectedSegmentType(true)),
+                  ],
+                ),
+                if (isArc && arc != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('center (', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                      _NumberField(value: arc.center.x,
+                          onChanged: (x) => _updateSelectedArc((a) =>
+                              ArcData(center: Coordinate(x, a.center.y), radius: a.radius, clockwise: a.clockwise))),
+                      const Text(', ', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                      _NumberField(value: arc.center.y,
+                          onChanged: (y) => _updateSelectedArc((a) =>
+                              ArcData(center: Coordinate(a.center.x, y), radius: a.radius, clockwise: a.clockwise))),
+                      const Text(')  r ', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                      _NumberField(value: arc.radius,
+                          onChanged: (r) => _updateSelectedArc((a) =>
+                              ArcData(center: a.center, radius: r, clockwise: a.clockwise))),
+                      const SizedBox(width: 12),
+                      Checkbox(value: arc.clockwise, onChanged: (v) =>
+                          _updateSelectedArc((a) =>
+                              ArcData(center: a.center, radius: a.radius, clockwise: v ?? false))),
+                      const Text('clockwise', style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                    ],
+                  ),
+                ],
+              ],
+            );
+          }),
         ],
       ),
     );
