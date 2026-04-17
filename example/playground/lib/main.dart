@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -352,6 +353,65 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
 
   static const double _vertexHitRadius = 10.0;
 
+  /// Monotonic counter incremented on every input change (drag, toggle,
+  /// typed coordinate, op change). Used to detect stale cached result.
+  int _inputsEpoch = 0;
+
+  /// Result from the last completed recompute, along with the epoch at
+  /// which it was computed. `_cachedResultEpoch != _inputsEpoch` means
+  /// a recompute is pending.
+  ArcPolygon _cachedResult = ArcPolygon(regions: const []);
+  int _cachedResultEpoch = 0;
+
+  /// Active debounce timer (nullable). Cancelled if a new change comes in
+  /// before it fires.
+  Timer? _recomputeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _cachedResult = _computeResult();
+    _cachedResultEpoch = _inputsEpoch;
+  }
+
+  @override
+  void dispose() {
+    _recomputeTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Call after any mutation that should invalidate the cached result.
+  /// Increments the epoch and debounces the next recompute.
+  void _invalidateResult() {
+    _inputsEpoch++;
+    _recomputeTimer?.cancel();
+    _recomputeTimer = Timer(const Duration(milliseconds: 80), () {
+      if (!mounted) return;
+      final next = _computeResult();
+      setState(() {
+        _cachedResult = next;
+        _cachedResultEpoch = _inputsEpoch;
+      });
+    });
+  }
+
+  /// Force an immediate recompute (used on drag end and op switch).
+  void _recomputeNow() {
+    _recomputeTimer?.cancel();
+    final next = _computeResult();
+    setState(() {
+      _cachedResult = next;
+      _cachedResultEpoch = _inputsEpoch;
+    });
+  }
+
+  /// Convenience wrapper: runs [fn] inside setState, then schedules a
+  /// debounced recompute.
+  void _setStateAndInvalidate(VoidCallback fn) {
+    setState(fn);
+    _invalidateResult();
+  }
+
   /// Returns the selection for the vertex nearest to [tap] within hit
   /// radius, searching A then B. Returns null if no vertex is close.
   ({bool onA, Selection sel})? _hitTestVertex(Offset tap) {
@@ -503,7 +563,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     final prev = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
     final selV = verts[sel.vertexIndex];
     final newArc = asArc ? _defaultArcFor(prev.point, selV.point) : null;
-    setState(() {
+    _setStateAndInvalidate(() {
       if (_inputSelectionOnA) {
         _a = _withArcOnSegment(_a, sel, newArc);
       } else {
@@ -520,7 +580,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     final prev = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
     if (prev.arcToNext == null) return;
     final next = transform(prev.arcToNext!);
-    setState(() {
+    _setStateAndInvalidate(() {
       if (_inputSelectionOnA) {
         _a = _withArcOnSegment(_a, sel, next);
       } else {
@@ -552,7 +612,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
   void _addSegmentAfter() {
     final sel = _inputSelection;
     if (sel == null) return;
-    setState(() {
+    _setStateAndInvalidate(() {
       if (_inputSelectionOnA) {
         _a = _insertVertexAfter(_a, sel);
       } else {
@@ -567,7 +627,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     if (sel == null) return;
     final poly = _inputSelectionOnA ? _a : _b;
     if (poly.regions[sel.regionIndex].vertices.length < 4) return;
-    setState(() {
+    _setStateAndInvalidate(() {
       if (_inputSelectionOnA) {
         _a = _deleteVertex(_a, sel);
       } else {
@@ -621,10 +681,14 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
             _TypePill(
                 label: op.label,
                 active: _op == op,
-                onTap: () => setState(() {
-                      _op = op;
-                      _resultSelection = null;
-                    })),
+                onTap: () {
+                  setState(() {
+                    _op = op;
+                    _resultSelection = null;
+                  });
+                  _inputsEpoch++;
+                  _recomputeNow();
+                }),
             const SizedBox(width: 6),
           ],
         ],
@@ -708,7 +772,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     final prevV = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
 
     void updateVertex(int vi, Offset pos) {
-      setState(() {
+      _setStateAndInvalidate(() {
         final s = Selection(sel.regionIndex, vi);
         if (_inputSelectionOnA) {
           _a = _withMovedVertex(_a, s, pos);
@@ -881,7 +945,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cachedResult = _computeResult();
+    final cachedResult = _cachedResult;
     return Scaffold(
       appBar: AppBar(title: const Text('poly_bool_arcs Playground')),
       body: SingleChildScrollView(
@@ -947,20 +1011,26 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                           _b = _withMovedVertex(_b, _inputSelection!, d.localPosition);
                         }
                       });
+                      _invalidateResult();
                     } else if (_draggingPolygonA) {
                       final delta = d.localPosition - _lastDragPos;
                       setState(() => _a = _translatePolygon(_a, delta));
                       _lastDragPos = d.localPosition;
+                      _invalidateResult();
                     } else if (_draggingPolygonB) {
                       final delta = d.localPosition - _lastDragPos;
                       setState(() => _b = _translatePolygon(_b, delta));
                       _lastDragPos = d.localPosition;
+                      _invalidateResult();
                     }
                   },
                   onPanEnd: (_) {
+                    final wasDragging =
+                        _draggingVertex || _draggingPolygonA || _draggingPolygonB;
                     _draggingVertex = false;
                     _draggingPolygonA = false;
                     _draggingPolygonB = false;
+                    if (wasDragging) _recomputeNow();
                   },
                   child: CustomPaint(
                     painter: PolygonPainter(
@@ -980,8 +1050,16 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
             const SizedBox(height: 10),
             _buildOperationBar(),
             const SizedBox(height: 10),
-            const Text('Result',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            Row(children: [
+              const Text('Result',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              if (_cachedResultEpoch != _inputsEpoch)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8),
+                  child: Text('(updating…)',
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ),
+            ]),
             const SizedBox(height: 6),
             SizedBox(
               width: 600,
