@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'arc_data.dart';
 import 'coordinate.dart';
 import 'epsilon.dart';
@@ -216,14 +218,28 @@ class _Chain {
     final vertices = <ArcVertex>[];
     for (int i = 0; i < n; i++) {
       final arcToNext = i < arcs.length ? arcs[i] : null;
-      vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
       if (arcToNext != null) {
-        final nextPoint = points[i + 1];
-        print('[TRACE chainer EMIT] vertex=(${points[i].x}, ${points[i].y}) '
-            '-> next=(${nextPoint.x}, ${nextPoint.y}) arc center='
-            '(${arcToNext.center.x}, ${arcToNext.center.y}) '
-            'r=${arcToNext.radius} cw=${arcToNext.clockwise}');
+        final start = points[i];
+        final end = points[i + 1];
+        final arc = arcToNext;
+        assert(() {
+          final cx = arc.center.x, cy = arc.center.y, r = arc.radius;
+          final dStart = math.sqrt((start.x - cx) * (start.x - cx) +
+              (start.y - cy) * (start.y - cy));
+          final dEnd = math.sqrt((end.x - cx) * (end.x - cx) +
+              (end.y - cy) * (end.y - cy));
+          const tol = 1e-6;
+          if ((dStart - r).abs() > tol || (dEnd - r).abs() > tol) {
+            // ignore: avoid_print
+            print('ASSERTION FAIL: arc emission has endpoint off the circle. '
+                'start=(${start.x}, ${start.y}), end=(${end.x}, ${end.y}), '
+                'center=($cx, $cy), r=$r, dStart=$dStart, dEnd=$dEnd');
+            return false;
+          }
+          return true;
+        }(), 'arc emission endpoints must lie on the arc circle');
       }
+      vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
     }
     return ArcRegion(vertices);
   }
