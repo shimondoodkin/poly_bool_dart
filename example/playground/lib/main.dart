@@ -255,6 +255,48 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
 
   bool _draggingVertex = false;
 
+  /// Winding-number test using the polygon's sampled vertex list. Ignores
+  /// arc curvature; good enough for hit-testing an interior grab point.
+  bool _pointInPolygon(ArcPolygon p, Offset pt) {
+    for (final region in p.regions) {
+      final verts = region.vertices;
+      if (verts.length < 3) continue;
+      int inside = 0;
+      for (int i = 0; i < verts.length; i++) {
+        final a = verts[i].point;
+        final b = verts[(i + 1) % verts.length].point;
+        final intersects =
+            ((a.y > pt.dy) != (b.y > pt.dy)) &&
+                (pt.dx < (b.x - a.x) * (pt.dy - a.y) / (b.y - a.y) + a.x);
+        if (intersects) inside = 1 - inside;
+      }
+      if (inside == 1) return true;
+    }
+    return false;
+  }
+
+  ArcPolygon _translatePolygon(ArcPolygon p, Offset delta) {
+    final regions = p.regions.map((r) {
+      final verts = r.vertices.map((v) {
+        final np = Coordinate(v.point.x + delta.dx, v.point.y + delta.dy);
+        final na = v.arcToNext == null
+            ? null
+            : ArcData(
+                center: Coordinate(v.arcToNext!.center.x + delta.dx,
+                    v.arcToNext!.center.y + delta.dy),
+                radius: v.arcToNext!.radius,
+                clockwise: v.arcToNext!.clockwise);
+        return ArcVertex(point: np, arcToNext: na);
+      }).toList();
+      return ArcRegion(verts);
+    }).toList();
+    return ArcPolygon(regions: regions, inverted: p.inverted);
+  }
+
+  bool _draggingPolygonA = false;
+  bool _draggingPolygonB = false;
+  Offset _lastDragPos = Offset.zero;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -284,28 +326,59 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                     });
                   },
                   onPanStart: (d) {
-                    final hit = _hitTestVertex(d.localPosition);
-                    if (hit == null) {
-                      _draggingVertex = false;
+                    final vhit = _hitTestVertex(d.localPosition);
+                    if (vhit != null) {
+                      setState(() {
+                        _inputSelection = vhit.sel;
+                        _inputSelectionOnA = vhit.onA;
+                      });
+                      _draggingVertex = true;
+                      _draggingPolygonA = false;
+                      _draggingPolygonB = false;
                       return;
                     }
-                    setState(() {
-                      _inputSelection = hit.sel;
-                      _inputSelectionOnA = hit.onA;
-                    });
-                    _draggingVertex = true;
+                    if (_pointInPolygon(_a, d.localPosition)) {
+                      _draggingPolygonA = true;
+                      _draggingPolygonB = false;
+                      _draggingVertex = false;
+                      _lastDragPos = d.localPosition;
+                      return;
+                    }
+                    if (_pointInPolygon(_b, d.localPosition)) {
+                      _draggingPolygonB = true;
+                      _draggingPolygonA = false;
+                      _draggingVertex = false;
+                      _lastDragPos = d.localPosition;
+                      return;
+                    }
+                    _draggingVertex = false;
+                    _draggingPolygonA = false;
+                    _draggingPolygonB = false;
                   },
                   onPanUpdate: (d) {
-                    if (!_draggingVertex || _inputSelection == null) return;
-                    setState(() {
-                      if (_inputSelectionOnA) {
-                        _a = _withMovedVertex(_a, _inputSelection!, d.localPosition);
-                      } else {
-                        _b = _withMovedVertex(_b, _inputSelection!, d.localPosition);
-                      }
-                    });
+                    if (_draggingVertex && _inputSelection != null) {
+                      setState(() {
+                        if (_inputSelectionOnA) {
+                          _a = _withMovedVertex(_a, _inputSelection!, d.localPosition);
+                        } else {
+                          _b = _withMovedVertex(_b, _inputSelection!, d.localPosition);
+                        }
+                      });
+                    } else if (_draggingPolygonA) {
+                      final delta = d.localPosition - _lastDragPos;
+                      setState(() => _a = _translatePolygon(_a, delta));
+                      _lastDragPos = d.localPosition;
+                    } else if (_draggingPolygonB) {
+                      final delta = d.localPosition - _lastDragPos;
+                      setState(() => _b = _translatePolygon(_b, delta));
+                      _lastDragPos = d.localPosition;
+                    }
                   },
-                  onPanEnd: (_) => _draggingVertex = false,
+                  onPanEnd: (_) {
+                    _draggingVertex = false;
+                    _draggingPolygonA = false;
+                    _draggingPolygonB = false;
+                  },
                   child: CustomPaint(
                     painter: PolygonPainter(
                       polygons: [
