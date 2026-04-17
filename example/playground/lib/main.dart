@@ -632,8 +632,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     );
   }
 
-  Widget _buildResultPanel() {
-    final result = _computeResult();
+  Widget _buildResultPanel(ArcPolygon result) {
     final sel = _resultSelection;
     if (sel == null ||
         sel.regionIndex >= result.regions.length ||
@@ -882,6 +881,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cachedResult = _computeResult();
     return Scaffold(
       appBar: AppBar(title: const Text('poly_bool_arcs Playground')),
       body: SingleChildScrollView(
@@ -993,14 +993,14 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                 ),
                 child: GestureDetector(
                   onTapDown: (d) {
-                    final r = _computeResult();
+                    final r = cachedResult;
                     final hit = _hitTestResultVertex(d.localPosition, r);
                     setState(() => _resultSelection = hit);
                   },
                   child: CustomPaint(
                     painter: PolygonPainter(
                       polygons: [
-                        (polygon: _computeResult(), color: Colors.green.shade700),
+                        (polygon: cachedResult, color: Colors.green.shade700),
                       ],
                       selection: _resultSelection,
                       selectionOnFirst: true,
@@ -1010,7 +1010,7 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
               ),
             ),
             const SizedBox(height: 10),
-            _buildResultPanel(),
+            _buildResultPanel(cachedResult),
             const SizedBox(height: 16),
             const Text('Current state (copy to reproduce)',
                 style: TextStyle(fontWeight: FontWeight.bold)),
