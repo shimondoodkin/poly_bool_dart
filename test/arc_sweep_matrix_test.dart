@@ -97,4 +97,124 @@ void main() {
       );
     });
   });
+
+  group('intersect', () {
+    test('rect vs rect', () {
+      final result = PolyBoolArcs.intersect(
+        rect(0, 0, 100, 100),
+        rect(50, 50, 150, 150),
+      );
+      expectArcSweepWithinInputs(
+          result: result, inputCircles: const []);
+    });
+
+    test('arc-rect vs rect', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final result = PolyBoolArcs.intersect(a.poly, rect(80, 25, 200, 75));
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle],
+      );
+    });
+
+    test('arc vs arc', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final b = rectWithRightSemicircle(60, 0, 160, 100);
+      final result = PolyBoolArcs.intersect(a.poly, b.poly);
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle, b.circle],
+      );
+    });
+
+    test('arc-rect vs arc-rect non-overlapping (empty result)', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final b = rectWithRightSemicircle(300, 0, 400, 100);
+      final result = PolyBoolArcs.intersect(a.poly, b.poly);
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle, b.circle],
+      );
+    });
+  });
+
+  group('difference', () {
+    test('rect vs rect', () {
+      final result = PolyBoolArcs.difference(
+        rect(0, 0, 100, 100),
+        rect(50, 50, 150, 150),
+      );
+      expectArcSweepWithinInputs(
+          result: result, inputCircles: const []);
+    });
+
+    test('arc-rect vs rect (cut the arc region)', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final result = PolyBoolArcs.difference(a.poly, rect(120, 25, 200, 75));
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle],
+      );
+    });
+
+    test('arc vs arc', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final b = rectWithRightSemicircle(60, 0, 160, 100);
+      final result = PolyBoolArcs.difference(a.poly, b.poly);
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle, b.circle],
+      );
+    });
+
+    test('arc-rect vs arc-rect non-overlapping', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final b = rectWithRightSemicircle(300, 0, 400, 100);
+      final result = PolyBoolArcs.difference(a.poly, b.poly);
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle, b.circle],
+      );
+    });
+  });
+
+  group('xor', () {
+    test('rect vs rect', () {
+      final result = PolyBoolArcs.xor(
+        rect(0, 0, 100, 100),
+        rect(50, 50, 150, 150),
+      );
+      expectArcSweepWithinInputs(
+          result: result, inputCircles: const []);
+    });
+
+    test('arc-rect vs rect', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final result = PolyBoolArcs.xor(a.poly, rect(120, 25, 200, 75));
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle],
+      );
+    });
+
+    test('arc vs arc', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final b = rectWithRightSemicircle(60, 0, 160, 100);
+      final result = PolyBoolArcs.xor(a.poly, b.poly);
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle, b.circle],
+      );
+    });
+
+    test('arc-rect vs arc-rect non-overlapping', () {
+      final a = rectWithRightSemicircle(0, 0, 100, 100);
+      final b = rectWithRightSemicircle(300, 0, 400, 100);
+      final result = PolyBoolArcs.xor(a.poly, b.poly);
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [a.circle, b.circle],
+      );
+    });
+  });
 }
