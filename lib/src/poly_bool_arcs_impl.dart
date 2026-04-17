@@ -125,14 +125,15 @@ class PolyBoolArcs {
       final endAngle = geo.angleOf(arc.center, seg.end);
 
       double midAngle;
+      // y-down: clockwise=true means atan2 angle increases
       if (arc.clockwise) {
-        var diff = startAngle - endAngle;
-        if (diff < 0) diff += 2 * math.pi;
-        midAngle = startAngle - diff / 2;
-      } else {
         var diff = endAngle - startAngle;
         if (diff < 0) diff += 2 * math.pi;
         midAngle = startAngle + diff / 2;
+      } else {
+        var diff = startAngle - endAngle;
+        if (diff < 0) diff += 2 * math.pi;
+        midAngle = startAngle - diff / 2;
       }
 
       return Coordinate(
@@ -168,16 +169,17 @@ class PolyBoolArcs {
       final len = math.sqrt(dx * dx + dy * dy);
       if (len < 1e-15) return Coordinate(0, 1);
 
-      // Tangent direction on the arc at this point
-      // For CCW (clockwise=false): tangent = (-dy, dx) (perpendicular to radius, CCW)
-      // For CW (clockwise=true): tangent = (dy, -dx) (perpendicular to radius, CW)
+      // Tangent direction on the arc at this point.
+      // y-down: clockwise=true means atan2 angle increases, so the tangent
+      // is the derivative of (cos a, sin a), i.e. (-sin a, cos a) = (-dy, dx)/r.
+      // clockwise=false (y-down CCW, angle decreasing): tangent is (dy, -dx)/r.
       double tx, ty;
       if (arc.clockwise) {
-        tx = dy / len;
-        ty = -dx / len;
-      } else {
         tx = -dy / len;
         ty = dx / len;
+      } else {
+        tx = dy / len;
+        ty = -dx / len;
       }
 
       // But segments are stored with start.x <= end.x. If the tangent points

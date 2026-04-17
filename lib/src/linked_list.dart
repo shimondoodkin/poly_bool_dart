@@ -145,18 +145,19 @@ double? _segmentYAtX(Segment seg, double x, Epsilon eps) {
   final endAngle =
       math.atan2(seg.end.y - arc.center.y, seg.end.x - arc.center.x);
 
-  // Compute a mid-angle
+  // Compute a mid-angle.
+  // y-down: clockwise=true means atan2 angle increases.
   double midAngle;
   if (arc.clockwise) {
-    // CW: go from start to end by decreasing angle
-    var diff = startAngle - endAngle;
-    if (diff < 0) diff += 2 * math.pi;
-    midAngle = startAngle - diff / 2;
-  } else {
-    // CCW: go from start to end by increasing angle
+    // CW in y-down screen coords: go from start to end by increasing angle
     var diff = endAngle - startAngle;
     if (diff < 0) diff += 2 * math.pi;
     midAngle = startAngle + diff / 2;
+  } else {
+    // CCW in y-down screen coords: go from start to end by decreasing angle
+    var diff = startAngle - endAngle;
+    if (diff < 0) diff += 2 * math.pi;
+    midAngle = startAngle - diff / 2;
   }
 
   final midY = arc.center.y + arc.radius * math.sin(midAngle);

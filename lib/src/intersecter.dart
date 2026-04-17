@@ -169,17 +169,18 @@ class Intersecter {
     splitPoints.sort((a, b) {
       final aa = geo.angleOf(c, a);
       final ab = geo.angleOf(c, b);
-      // Sort by angular distance from startAngle in the arc direction
+      // Sort by angular distance from startAngle in the arc direction.
+      // y-down: clockwise=true means atan2 angle increases.
       double distA, distB;
       if (arc.clockwise) {
-        distA = startAngle - aa;
-        if (distA < 0) distA += 2 * math.pi;
-        distB = startAngle - ab;
-        if (distB < 0) distB += 2 * math.pi;
-      } else {
         distA = aa - startAngle;
         if (distA < 0) distA += 2 * math.pi;
         distB = ab - startAngle;
+        if (distB < 0) distB += 2 * math.pi;
+      } else {
+        distA = startAngle - aa;
+        if (distA < 0) distA += 2 * math.pi;
+        distB = startAngle - ab;
         if (distB < 0) distB += 2 * math.pi;
       }
       return distA.compareTo(distB);
