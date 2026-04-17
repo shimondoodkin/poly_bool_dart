@@ -70,6 +70,19 @@ ArcPolygon _initialPolygonB() => ArcPolygon(regions: [
 /// `chord / 2` (the arc becomes a half-circle). The chosen center stays on
 /// the same side of the chord as [old.center], so the arc's visual bulge
 /// direction is preserved.
+/// Return [p] projected onto the circle at [center] with [radius].
+Coordinate _snapToCircle(Coordinate p, Coordinate center, double radius) {
+  final dx = p.x - center.x;
+  final dy = p.y - center.y;
+  final len = math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-9) {
+    // Degenerate: vertex is at the center. Push it to (center.x + r, center.y).
+    return Coordinate(center.x + radius, center.y);
+  }
+  final scale = radius / len;
+  return Coordinate(center.x + dx * scale, center.y + dy * scale);
+}
+
 ArcData _reanchorArc(ArcData old, Coordinate a, Coordinate b) {
   final mx = (a.x + b.x) / 2;
   final my = (a.y + b.y) / 2;
@@ -362,8 +375,6 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
       final nextPt = verts[(s.vertexIndex + 1) % n].point;
       newOutgoing = _reanchorArc(newOutgoing, newPoint, nextPt);
     }
-    verts[s.vertexIndex] =
-        ArcVertex(point: newPoint, arcToNext: newOutgoing);
 
     // Incoming arc (previous vertex's arcToNext): the arc's `b` endpoint moved.
     final prevIdx = (s.vertexIndex - 1 + n) % n;
@@ -372,6 +383,27 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
       final newIncoming = _reanchorArc(prev.arcToNext!, prev.point, newPoint);
       verts[prevIdx] = ArcVertex(point: prev.point, arcToNext: newIncoming);
     }
+
+    // Snap the dragged vertex onto the re-anchored arc's circle so the
+    // point lies exactly on the circle the arc references. Accumulated
+    // floating-point drift can otherwise leave it ~0.04 off, which
+    // trips the library's debug invariant in _Chain.toArcRegion.
+    // If the vertex sits at the junction of TWO arcs, skip snapping —
+    // it would need to lie on both circles at once (ill-conditioned).
+    Coordinate snappedPoint = newPoint;
+    final updatedPrev = verts[prevIdx];
+    final incomingArc = updatedPrev.arcToNext;
+    if (newOutgoing != null && incomingArc == null) {
+      snappedPoint =
+          _snapToCircle(newPoint, newOutgoing.center, newOutgoing.radius);
+    } else if (newOutgoing == null && incomingArc != null) {
+      snappedPoint =
+          _snapToCircle(newPoint, incomingArc.center, incomingArc.radius);
+    }
+    // Both-arcs case: leave snappedPoint at newPoint.
+
+    verts[s.vertexIndex] =
+        ArcVertex(point: snappedPoint, arcToNext: newOutgoing);
 
     regions[s.regionIndex] = ArcRegion(verts);
     return ArcPolygon(regions: regions, inverted: p.inverted);
