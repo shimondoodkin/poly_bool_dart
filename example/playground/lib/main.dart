@@ -64,6 +64,35 @@ ArcPolygon _initialPolygonB() => ArcPolygon(regions: [
       ]),
     ]);
 
+/// Recompute an arc's center so that both [a] and [b] lie exactly on the
+/// circle, preserving the arc's [old.radius] and winding side. If the new
+/// chord is longer than `2 * old.radius`, the radius is stretched to
+/// `chord / 2` (the arc becomes a half-circle). The chosen center stays on
+/// the same side of the chord as [old.center], so the arc's visual bulge
+/// direction is preserved.
+ArcData _reanchorArc(ArcData old, Coordinate a, Coordinate b) {
+  final mx = (a.x + b.x) / 2;
+  final my = (a.y + b.y) / 2;
+  final dx = b.x - a.x;
+  final dy = b.y - a.y;
+  final chord = math.sqrt(dx * dx + dy * dy);
+  if (chord < 1e-6) return old;
+  double r = old.radius;
+  if (r < chord / 2) r = chord / 2;
+  final dSquared = r * r - (chord / 2) * (chord / 2);
+  final d = dSquared > 0 ? math.sqrt(dSquared) : 0.0;
+  final perpX = -dy / chord;
+  final perpY = dx / chord;
+  final c1 = Coordinate(mx + perpX * d, my + perpY * d);
+  final c2 = Coordinate(mx - perpX * d, my - perpY * d);
+  final d1sq = (c1.x - old.center.x) * (c1.x - old.center.x) +
+      (c1.y - old.center.y) * (c1.y - old.center.y);
+  final d2sq = (c2.x - old.center.x) * (c2.x - old.center.x) +
+      (c2.y - old.center.y) * (c2.y - old.center.y);
+  final newCenter = d1sq <= d2sq ? c1 : c2;
+  return ArcData(center: newCenter, radius: r, clockwise: old.clockwise);
+}
+
 /// Paints one or more polygons onto a canvas. For each region, walks the
 /// vertex list, drawing LineSegment edges and Arc edges (via
 /// Canvas.arcToPoint). Also draws a small square at each vertex.
@@ -323,9 +352,27 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
   ArcPolygon _withMovedVertex(ArcPolygon p, Selection s, Offset newPos) {
     final regions = List<ArcRegion>.of(p.regions);
     final verts = List<ArcVertex>.of(regions[s.regionIndex].vertices);
+    final n = verts.length;
     final old = verts[s.vertexIndex];
+    final newPoint = Coordinate(newPos.dx, newPos.dy);
+
+    // Outgoing arc (this vertex's arcToNext): the arc's `a` endpoint moved.
+    ArcData? newOutgoing = old.arcToNext;
+    if (newOutgoing != null) {
+      final nextPt = verts[(s.vertexIndex + 1) % n].point;
+      newOutgoing = _reanchorArc(newOutgoing, newPoint, nextPt);
+    }
     verts[s.vertexIndex] =
-        ArcVertex(point: Coordinate(newPos.dx, newPos.dy), arcToNext: old.arcToNext);
+        ArcVertex(point: newPoint, arcToNext: newOutgoing);
+
+    // Incoming arc (previous vertex's arcToNext): the arc's `b` endpoint moved.
+    final prevIdx = (s.vertexIndex - 1 + n) % n;
+    final prev = verts[prevIdx];
+    if (prev.arcToNext != null) {
+      final newIncoming = _reanchorArc(prev.arcToNext!, prev.point, newPoint);
+      verts[prevIdx] = ArcVertex(point: prev.point, arcToNext: newIncoming);
+    }
+
     regions[s.regionIndex] = ArcRegion(verts);
     return ArcPolygon(regions: regions, inverted: p.inverted);
   }
