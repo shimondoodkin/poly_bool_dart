@@ -243,81 +243,15 @@ void main() {
         ],
       );
 
-      // Stronger check specific to this regression: for every arc on
-      // the target circle, compute the midpoint angle as the arc walks
-      // per its own `clockwise` flag. That midpoint must also lie
-      // within the input sweep. A flipped flag pushes the midpoint to
-      // the complementary (long-way) side and this expectation fails.
-      final tol = 0.01;
-      final angleTol = tol / arcRadius;
-      for (final region in result.regions) {
-        for (int i = 0; i < region.vertices.length; i++) {
-          final v = region.vertices[i];
-          final arc = v.arcToNext;
-          if (arc == null) continue;
-          if ((arc.center.x - arcCenter.x).abs() > tol ||
-              (arc.center.y - arcCenter.y).abs() > tol ||
-              (arc.radius - arcRadius).abs() > tol) {
-            continue;
-          }
-          final next = region.vertices[(i + 1) % region.vertices.length];
-          final aAng = math.atan2(
-              v.point.y - arc.center.y, v.point.x - arc.center.x);
-          final bAng = math.atan2(next.point.y - arc.center.y,
-              next.point.x - arc.center.x);
-          double d = bAng - aAng;
-          if (arc.clockwise) {
-            while (d < 0) {
-              d += 2 * math.pi;
-            }
-          } else {
-            while (d > 0) {
-              d -= 2 * math.pi;
-            }
-          }
-          final midAng = aAng + d / 2;
-          final midInSweep = inputCircle.sweeps.any((w) {
-            // Reuse _angleInSweep logic inline: clockwise=true means
-            // atan2 angle increases.
-            double norm(double x) {
-              while (x < -math.pi) {
-                x += 2 * math.pi;
-              }
-              while (x > math.pi) {
-                x -= 2 * math.pi;
-              }
-              return x;
-            }
-
-            final s = norm(w.startAngle);
-            final e = norm(w.endAngle);
-            final aa = norm(midAng);
-            double deltaFn(double from, double to) {
-              double dd = to - from;
-              if (w.clockwise) {
-                while (dd < 0) {
-                  dd += 2 * math.pi;
-                }
-              } else {
-                while (dd > 0) {
-                  dd -= 2 * math.pi;
-                }
-              }
-              return dd;
-            }
-
-            final total = deltaFn(s, e).abs();
-            final fromStart = deltaFn(s, aa).abs();
-            return fromStart <= total + angleTol;
-          });
-          expect(midInSweep, isTrue,
-              reason:
-                  'Arc midpoint angle=$midAng (from aAng=$aAng bAng=$bAng '
-                  'cw=${arc.clockwise}) is outside input sweep — the arc '
-                  'is sweeping the long way around the circle, which '
-                  'means the clockwise flag is flipped from the input.');
-        }
-      }
+      // The shared helper now performs an arc-midpoint check as well,
+      // which catches the cw-flag regression this test was written for:
+      // a flipped flag pushes the midpoint to the complementary
+      // (long-way) side of the circle even though both endpoints remain
+      // in-sweep.
+      expectArcSweepWithinInputs(
+        result: result,
+        inputCircles: [inputCircle],
+      );
     });
   });
 

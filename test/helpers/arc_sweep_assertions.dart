@@ -54,6 +54,20 @@ void expectArcSweepWithinInputs({
   required List<InputCircle> inputCircles,
   double tolerance = 0.01,
 }) {
+  double midAngleFor(double aAng, double bAng, bool clockwise) {
+    double d = bAng - aAng;
+    if (clockwise) {
+      while (d < 0) {
+        d += 2 * math.pi;
+      }
+    } else {
+      while (d > 0) {
+        d -= 2 * math.pi;
+      }
+    }
+    return aAng + d / 2;
+  }
+
   for (int ri = 0; ri < result.regions.length; ri++) {
     final region = result.regions[ri];
     for (int i = 0; i < region.vertices.length; i++) {
@@ -99,6 +113,16 @@ void expectArcSweepWithinInputs({
               '(${next.point.x}, ${next.point.y}) angle=$bAngle is '
               'outside every input sweep on circle center='
               '(${arc.center.x}, ${arc.center.y})');
+
+      final midAngle = midAngleFor(aAngle, bAngle, arc.clockwise);
+      final midInSweep = circle.sweeps.any(
+          (w) => _angleInSweep(midAngle, w, angleTol));
+      expect(midInSweep, isTrue,
+          reason: 'region $ri edge $i: arc midpoint at angle=$midAngle is '
+              'outside every input sweep on circle center='
+              '(${arc.center.x}, ${arc.center.y}). Endpoints are within the '
+              'sweep but the clockwise flag traces the wrong way around '
+              'the circle.');
     }
   }
 }
@@ -141,10 +165,14 @@ bool _angleInSweep(double angle, SweepWindow w, double tol) {
   double delta(double from, double to) {
     double d = to - from;
     if (w.clockwise) {
+      // Accept tiny negative values (floating-point residue on the
+      // start boundary) as zero rather than wrapping them to ~2π.
+      if (d < 0 && d > -tol) return 0;
       while (d < 0) {
         d += 2 * math.pi;
       }
     } else {
+      if (d > 0 && d < tol) return 0;
       while (d > 0) {
         d -= 2 * math.pi;
       }
