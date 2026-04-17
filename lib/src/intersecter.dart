@@ -124,6 +124,11 @@ class Intersecter {
   /// This ensures each sub-arc is y-monotone, making the sweep-line
   /// status ordering correct.
   void _addArcSubSegments(Coordinate pt1, Coordinate pt2, ArcData arc) {
+    // [TRACE addArcSubSegments INPUT] diagnostic print (Task 6)
+    print('[TRACE addArcSubSegments INPUT] pt1=(${pt1.x}, ${pt1.y}) '
+        'pt2=(${pt2.x}, ${pt2.y}) center=(${arc.center.x}, ${arc.center.y}) '
+        'r=${arc.radius} cw=${arc.clockwise}');
+
     // Find the extreme points of the arc that lie between pt1 and pt2
     final c = arc.center;
     final r = arc.radius;
@@ -138,15 +143,23 @@ class Intersecter {
 
     final startAngle = geo.angleOf(c, pt1);
     final endAngle = geo.angleOf(c, pt2);
+    print('[TRACE addArcSubSegments ANGLES] startAngle=$startAngle '
+        'endAngle=$endAngle cw=${arc.clockwise}');
 
     // Filter to extremes that lie on the arc between pt1 and pt2
     final splitPoints = <Coordinate>[];
     for (final ext in extremes) {
       final extAngle = geo.angleOf(c, ext);
-      if (geo.angleInArcRange(extAngle, startAngle, endAngle, arc.clockwise)) {
+      final inRange =
+          geo.angleInArcRange(extAngle, startAngle, endAngle, arc.clockwise);
+      print('[TRACE addArcSubSegments EXTREME] ext=(${ext.x}, ${ext.y}) '
+          'angle=$extAngle inRange=$inRange');
+      if (inRange) {
         // Check it's not at the endpoints
         if (!eps.pointsSame(ext, pt1) && !eps.pointsSame(ext, pt2)) {
           splitPoints.add(ext);
+          print('[TRACE addArcSubSegments KEEP] split=(${ext.x}, ${ext.y}) '
+              'angle=$extAngle');
         }
       }
     }
@@ -189,6 +202,10 @@ class Intersecter {
       if (swapped) {
         subArc = arc.reversed();
       }
+
+      print('[TRACE addArcSubSegments EMIT] start=(${start.x}, ${start.y}) '
+          'end=(${end.x}, ${end.y}) center=(${subArc.center.x}, '
+          '${subArc.center.y}) r=${subArc.radius} cw=${subArc.clockwise}');
 
       eventAddSegment(segmentNew(start, end, arc: subArc), true);
     }
@@ -281,6 +298,12 @@ class Intersecter {
     final arcSeg = arcEv.seg;
     final lineSeg = lineEv.seg;
 
+    print('[TRACE _checkArcLineIntersection ENTER] arc start='
+        '(${arcSeg.start.x}, ${arcSeg.start.y}) end=(${arcSeg.end.x}, '
+        '${arcSeg.end.y}) cw=${arcSeg.arc!.clockwise} | line start='
+        '(${lineSeg.start.x}, ${lineSeg.start.y}) end=(${lineSeg.end.x}, '
+        '${lineSeg.end.y})');
+
     final points = geo.lineArcIntersection(
       lineSeg.start,
       lineSeg.end,
@@ -288,6 +311,9 @@ class Intersecter {
       arcSeg.end,
       arcSeg.arc!,
     );
+
+    print('[TRACE _checkArcLineIntersection RESULT] points='
+        '${points.map((p) => '(${p.x}, ${p.y})').toList()}');
 
     if (points.isEmpty) return;
 
@@ -318,6 +344,12 @@ class Intersecter {
     final seg1 = ev1.seg;
     final seg2 = ev2.seg;
 
+    print('[TRACE _checkArcArcIntersection ENTER] arc1 start='
+        '(${seg1.start.x}, ${seg1.start.y}) end=(${seg1.end.x}, '
+        '${seg1.end.y}) cw=${seg1.arc!.clockwise} | arc2 start='
+        '(${seg2.start.x}, ${seg2.start.y}) end=(${seg2.end.x}, '
+        '${seg2.end.y}) cw=${seg2.arc!.clockwise}');
+
     final points = geo.arcArcIntersection(
       seg1.start,
       seg1.end,
@@ -326,6 +358,9 @@ class Intersecter {
       seg2.end,
       seg2.arc!,
     );
+
+    print('[TRACE _checkArcArcIntersection RESULT] points='
+        '${points.map((p) => '(${p.x}, ${p.y})').toList()}');
 
     if (points.isEmpty) return;
 

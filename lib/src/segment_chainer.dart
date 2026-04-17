@@ -217,6 +217,13 @@ class _Chain {
     for (int i = 0; i < n; i++) {
       final arcToNext = i < arcs.length ? arcs[i] : null;
       vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
+      if (arcToNext != null) {
+        final nextPoint = points[i + 1];
+        print('[TRACE chainer EMIT] vertex=(${points[i].x}, ${points[i].y}) '
+            '-> next=(${nextPoint.x}, ${nextPoint.y}) arc center='
+            '(${arcToNext.center.x}, ${arcToNext.center.y}) '
+            'r=${arcToNext.radius} cw=${arcToNext.clockwise}');
+      }
     }
     return ArcRegion(vertices);
   }
