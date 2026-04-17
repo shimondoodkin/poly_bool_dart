@@ -181,15 +181,19 @@ class PolygonPainter extends CustomPainter {
       Canvas canvas, ArcPolygon poly, Color color, bool selectionHere) {
     for (int ri = 0; ri < poly.regions.length; ri++) {
       final verts = poly.regions[ri].vertices;
+      final selValid = selection != null &&
+          selection!.regionIndex == ri &&
+          selection!.regionIndex >= 0 &&
+          selection!.regionIndex < poly.regions.length &&
+          selection!.vertexIndex >= 0 &&
+          selection!.vertexIndex < verts.length;
       for (int vi = 0; vi < verts.length; vi++) {
         final isSelectedVertex = selectionHere &&
-            selection != null &&
-            selection!.regionIndex == ri &&
+            selValid &&
             selection!.vertexIndex == vi;
         final prevIndex = (vi - 1 + verts.length) % verts.length;
         final isPreviousVertex = selectionHere &&
-            selection != null &&
-            selection!.regionIndex == ri &&
+            selValid &&
             selection!.vertexIndex == prevIndex;
         _drawHandle(canvas, verts[vi].point, color,
             filled: isSelectedVertex, highlighted: isPreviousVertex);
@@ -217,7 +221,16 @@ class PolygonPainter extends CustomPainter {
   void _drawSelectedSegmentOverlay(Canvas canvas) {
     if (selection == null || polygons.isEmpty) return;
     final poly = selectionOnFirst ? polygons.first : polygons.last;
+    if (selection!.regionIndex < 0 ||
+        selection!.regionIndex >= poly.polygon.regions.length) {
+      return;
+    }
     final verts = poly.polygon.regions[selection!.regionIndex].vertices;
+    if (verts.isEmpty ||
+        selection!.vertexIndex < 0 ||
+        selection!.vertexIndex >= verts.length) {
+      return;
+    }
     final selVi = selection!.vertexIndex;
     final prevVi = (selVi - 1 + verts.length) % verts.length;
     final v0 = verts[prevVi];
