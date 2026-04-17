@@ -486,6 +486,22 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     });
   }
 
+  Selection? _hitTestResultVertex(Offset tap, ArcPolygon result) {
+    Selection? best;
+    double bestD = _vertexHitRadius;
+    for (int ri = 0; ri < result.regions.length; ri++) {
+      final verts = result.regions[ri].vertices;
+      for (int vi = 0; vi < verts.length; vi++) {
+        final d = (tap - Offset(verts[vi].point.x, verts[vi].point.y)).distance;
+        if (d < bestD) {
+          bestD = d;
+          best = Selection(ri, vi);
+        }
+      }
+    }
+    return best;
+  }
+
   ArcPolygon _computeResult() {
     switch (_op) {
       case BoolOp.union:
@@ -519,6 +535,65 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                     })),
             const SizedBox(width: 6),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultPanel() {
+    final result = _computeResult();
+    final sel = _resultSelection;
+    if (sel == null ||
+        sel.regionIndex >= result.regions.length ||
+        result.regions[sel.regionIndex].vertices.isEmpty) {
+      return Container(
+        width: 600,
+        padding: const EdgeInsets.all(10),
+        color: Colors.grey.shade100,
+        child: const Text('Click a result vertex to inspect',
+            style: TextStyle(color: Colors.grey)),
+      );
+    }
+    final verts = result.regions[sel.regionIndex].vertices;
+    if (sel.vertexIndex >= verts.length) {
+      return Container(
+        width: 600,
+        padding: const EdgeInsets.all(10),
+        color: Colors.grey.shade100,
+        child: const Text('(stale selection)', style: TextStyle(color: Colors.grey)),
+      );
+    }
+    final selV = verts[sel.vertexIndex];
+    final prevV = verts[(sel.vertexIndex - 1 + verts.length) % verts.length];
+    final arc = prevV.arcToNext;
+
+    String fmt(double v) => v.toStringAsFixed(1);
+
+    return Container(
+      width: 600,
+      padding: const EdgeInsets.all(10),
+      color: Colors.grey.shade100,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Selected result segment (read-only)',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Text(
+            'a: (${fmt(prevV.point.x)}, ${fmt(prevV.point.y)})   '
+            'b: (${fmt(selV.point.x)}, ${fmt(selV.point.y)})   '
+            'type: ${arc == null ? "line" : "arc"}',
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+          if (arc != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '  center: (${fmt(arc.center.x)}, ${fmt(arc.center.y)})   '
+                'r: ${fmt(arc.radius)}   clockwise: ${arc.clockwise}',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ),
         ],
       ),
     );
@@ -783,17 +858,27 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                   color: Colors.white,
                   border: Border.all(color: Colors.grey.shade400),
                 ),
-                child: CustomPaint(
-                  painter: PolygonPainter(
-                    polygons: [
-                      (polygon: _computeResult(), color: Colors.green.shade700),
-                    ],
-                    selection: _resultSelection,
-                    selectionOnFirst: true,
+                child: GestureDetector(
+                  onTapDown: (d) {
+                    final r = _computeResult();
+                    final hit = _hitTestResultVertex(d.localPosition, r);
+                    setState(() => _resultSelection = hit);
+                  },
+                  child: CustomPaint(
+                    painter: PolygonPainter(
+                      polygons: [
+                        (polygon: _computeResult(), color: Colors.green.shade700),
+                      ],
+                      selection: _resultSelection,
+                      selectionOnFirst: true,
+                    ),
                   ),
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            _buildResultPanel(),
+            const SizedBox(height: 40),
           ],
         ),
       ),
