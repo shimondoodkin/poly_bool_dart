@@ -243,6 +243,18 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     return best;
   }
 
+  ArcPolygon _withMovedVertex(ArcPolygon p, Selection s, Offset newPos) {
+    final regions = List<ArcRegion>.of(p.regions);
+    final verts = List<ArcVertex>.of(regions[s.regionIndex].vertices);
+    final old = verts[s.vertexIndex];
+    verts[s.vertexIndex] =
+        ArcVertex(point: Coordinate(newPos.dx, newPos.dy), arcToNext: old.arcToNext);
+    regions[s.regionIndex] = ArcRegion(verts);
+    return ArcPolygon(regions: regions, inverted: p.inverted);
+  }
+
+  bool _draggingVertex = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -271,6 +283,29 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                       _inputSelectionOnA = hit.onA;
                     });
                   },
+                  onPanStart: (d) {
+                    final hit = _hitTestVertex(d.localPosition);
+                    if (hit == null) {
+                      _draggingVertex = false;
+                      return;
+                    }
+                    setState(() {
+                      _inputSelection = hit.sel;
+                      _inputSelectionOnA = hit.onA;
+                    });
+                    _draggingVertex = true;
+                  },
+                  onPanUpdate: (d) {
+                    if (!_draggingVertex || _inputSelection == null) return;
+                    setState(() {
+                      if (_inputSelectionOnA) {
+                        _a = _withMovedVertex(_a, _inputSelection!, d.localPosition);
+                      } else {
+                        _b = _withMovedVertex(_b, _inputSelection!, d.localPosition);
+                      }
+                    });
+                  },
+                  onPanEnd: (_) => _draggingVertex = false,
                   child: CustomPaint(
                     painter: PolygonPainter(
                       polygons: [
