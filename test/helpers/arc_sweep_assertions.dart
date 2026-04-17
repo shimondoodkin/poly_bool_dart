@@ -141,11 +141,11 @@ bool _angleInSweep(double angle, SweepWindow w, double tol) {
   double delta(double from, double to) {
     double d = to - from;
     if (w.clockwise) {
-      while (d <= 0) {
+      while (d < 0) {
         d += 2 * math.pi;
       }
     } else {
-      while (d >= 0) {
+      while (d > 0) {
         d -= 2 * math.pi;
       }
     }
