@@ -486,6 +486,31 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     });
   }
 
+  Widget _buildOperationBar() {
+    return Container(
+      width: 600,
+      padding: const EdgeInsets.all(10),
+      color: Colors.grey.shade200,
+      child: Row(
+        children: [
+          const Text('Boolean operation:',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 12),
+          for (final op in BoolOp.values) ...[
+            _TypePill(
+                label: op.label,
+                active: _op == op,
+                onTap: () => setState(() {
+                      _op = op;
+                      _resultSelection = null;
+                    })),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildSegmentPanel() {
     final sel = _inputSelection;
     if (sel == null) {
@@ -731,6 +756,8 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
             ),
             const SizedBox(height: 10),
             _buildSegmentPanel(),
+            const SizedBox(height: 10),
+            _buildOperationBar(),
           ],
         ),
       ),
