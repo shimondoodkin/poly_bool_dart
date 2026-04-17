@@ -486,6 +486,19 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
     });
   }
 
+  ArcPolygon _computeResult() {
+    switch (_op) {
+      case BoolOp.union:
+        return PolyBoolArcs.union(_a, _b);
+      case BoolOp.intersect:
+        return PolyBoolArcs.intersect(_a, _b);
+      case BoolOp.difference:
+        return PolyBoolArcs.difference(_a, _b);
+      case BoolOp.xor:
+        return PolyBoolArcs.xor(_a, _b);
+    }
+  }
+
   Widget _buildOperationBar() {
     return Container(
       width: 600,
@@ -758,6 +771,29 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
             _buildSegmentPanel(),
             const SizedBox(height: 10),
             _buildOperationBar(),
+            const SizedBox(height: 10),
+            const Text('Result',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 600,
+              height: 300,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: Colors.grey.shade400),
+                ),
+                child: CustomPaint(
+                  painter: PolygonPainter(
+                    polygons: [
+                      (polygon: _computeResult(), color: Colors.green.shade700),
+                    ],
+                    selection: _resultSelection,
+                    selectionOnFirst: true,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
