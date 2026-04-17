@@ -114,11 +114,15 @@ class PolygonPainter extends CustomPainter {
   final List<({ArcPolygon polygon, Color color})> polygons;
   final Selection? selection;
   final bool selectionOnFirst;
+  final Coordinate? selectedArcCenter;
+  final Color? selectedArcColor;
 
   const PolygonPainter({
     required this.polygons,
     this.selection,
     this.selectionOnFirst = true,
+    this.selectedArcCenter,
+    this.selectedArcColor,
   });
 
   @override
@@ -134,6 +138,20 @@ class PolygonPainter extends CustomPainter {
           canvas, p.polygon, p.color, _isSelectedOnThisPolygon(pi));
     }
     _drawSelectedSegmentOverlay(canvas);
+    if (selectedArcCenter != null && selectedArcColor != null) {
+      final p = Paint()
+        ..color = selectedArcColor!
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      const s = 6.0;
+      final c = Offset(selectedArcCenter!.x, selectedArcCenter!.y);
+      canvas.drawLine(c.translate(-s, 0), c.translate(s, 0), p);
+      canvas.drawLine(c.translate(0, -s), c.translate(0, s), p);
+      final fill = Paint()
+        ..color = selectedArcColor!.withValues(alpha: 0.18)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(c, 3.5, fill);
+    }
   }
 
   bool _isSelectedOnThisPolygon(int polygonIndex) {
@@ -259,7 +277,9 @@ class PolygonPainter extends CustomPainter {
   bool shouldRepaint(covariant PolygonPainter old) =>
       old.polygons != polygons ||
       old.selection != selection ||
-      old.selectionOnFirst != selectionOnFirst;
+      old.selectionOnFirst != selectionOnFirst ||
+      old.selectedArcCenter != selectedArcCenter ||
+      old.selectedArcColor != selectedArcColor;
 }
 
 /// Numeric text field that reports changes via [onChanged]. Used so the
@@ -524,7 +544,80 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
 
   bool _draggingPolygonA = false;
   bool _draggingPolygonB = false;
+  bool _draggingArcCenter = false;
   Offset _lastDragPos = Offset.zero;
+
+  Coordinate? _selectedArcCenter() {
+    final sel = _inputSelection;
+    if (sel == null) return null;
+    final poly = _inputSelectionOnA ? _a : _b;
+    if (sel.regionIndex >= poly.regions.length) return null;
+    final verts = poly.regions[sel.regionIndex].vertices;
+    if (sel.vertexIndex >= verts.length) return null;
+    final prevIdx =
+        (sel.vertexIndex - 1 + verts.length) % verts.length;
+    final arc = verts[prevIdx].arcToNext;
+    return arc?.center;
+  }
+
+  /// Project [pointer] onto the perpendicular bisector of segment [a]→[b],
+  /// then return a new ArcData with that point as the center, preserving
+  /// the [clockwise] flag and setting radius = |newCenter - a|.
+  ArcData _arcWithDraggedCenter(
+      Coordinate a, Coordinate b, Offset pointer, bool clockwise) {
+    final mx = (a.x + b.x) / 2;
+    final my = (a.y + b.y) / 2;
+    final dx = b.x - a.x;
+    final dy = b.y - a.y;
+    final chord2 = dx * dx + dy * dy;
+    if (chord2 < 1e-12) {
+      // Degenerate chord — fallback: center at pointer.
+      final r = math.sqrt((a.x - pointer.dx) * (a.x - pointer.dx) +
+          (a.y - pointer.dy) * (a.y - pointer.dy));
+      return ArcData(
+          center: Coordinate(pointer.dx, pointer.dy),
+          radius: r,
+          clockwise: clockwise);
+    }
+    // Perpendicular direction to the chord (unit length).
+    final invLen = 1 / math.sqrt(chord2);
+    final perpX = -dy * invLen;
+    final perpY = dx * invLen;
+    // Signed distance from chord midpoint to pointer along perpendicular.
+    final t = (pointer.dx - mx) * perpX + (pointer.dy - my) * perpY;
+    final cx = mx + perpX * t;
+    final cy = my + perpY * t;
+    final r = math.sqrt((a.x - cx) * (a.x - cx) + (a.y - cy) * (a.y - cy));
+    return ArcData(
+        center: Coordinate(cx, cy), radius: r, clockwise: clockwise);
+  }
+
+  void _dragArcCenter(Offset pointer) {
+    final sel = _inputSelection;
+    if (sel == null) return;
+    final poly = _inputSelectionOnA ? _a : _b;
+    final verts = poly.regions[sel.regionIndex].vertices;
+    final prevIdx =
+        (sel.vertexIndex - 1 + verts.length) % verts.length;
+    final prev = verts[prevIdx];
+    final selV = verts[sel.vertexIndex];
+    if (prev.arcToNext == null) return;
+    final newArc = _arcWithDraggedCenter(
+        prev.point, selV.point, pointer, prev.arcToNext!.clockwise);
+    _setStateAndInvalidate(() {
+      final regions = List<ArcRegion>.of((_inputSelectionOnA ? _a : _b).regions);
+      final vs = List<ArcVertex>.of(regions[sel.regionIndex].vertices);
+      vs[prevIdx] = ArcVertex(point: prev.point, arcToNext: newArc);
+      regions[sel.regionIndex] = ArcRegion(vs);
+      final updated = ArcPolygon(regions: regions,
+          inverted: (_inputSelectionOnA ? _a : _b).inverted);
+      if (_inputSelectionOnA) {
+        _a = updated;
+      } else {
+        _b = updated;
+      }
+    });
+  }
 
   /// Default arc when flipping a segment from line to arc. Chord midpoint
   /// offset perpendicular by chord/4 to the "right" of walk direction.
@@ -973,6 +1066,18 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                     });
                   },
                   onPanStart: (d) {
+                    final arcCenter = _selectedArcCenter();
+                    if (arcCenter != null) {
+                      final dx = d.localPosition.dx - arcCenter.x;
+                      final dy = d.localPosition.dy - arcCenter.y;
+                      if (dx * dx + dy * dy < _vertexHitRadius * _vertexHitRadius) {
+                        _draggingArcCenter = true;
+                        _draggingVertex = false;
+                        _draggingPolygonA = false;
+                        _draggingPolygonB = false;
+                        return;
+                      }
+                    }
                     final vhit = _hitTestVertex(d.localPosition);
                     if (vhit != null) {
                       setState(() {
@@ -1003,6 +1108,10 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                     _draggingPolygonB = false;
                   },
                   onPanUpdate: (d) {
+                    if (_draggingArcCenter) {
+                      _dragArcCenter(d.localPosition);
+                      return;
+                    }
                     if (_draggingVertex && _inputSelection != null) {
                       setState(() {
                         if (_inputSelectionOnA) {
@@ -1026,10 +1135,12 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                   },
                   onPanEnd: (_) {
                     final wasDragging =
-                        _draggingVertex || _draggingPolygonA || _draggingPolygonB;
+                        _draggingVertex || _draggingPolygonA || _draggingPolygonB ||
+                            _draggingArcCenter;
                     _draggingVertex = false;
                     _draggingPolygonA = false;
                     _draggingPolygonB = false;
+                    _draggingArcCenter = false;
                     if (wasDragging) _recomputeNow();
                   },
                   child: CustomPaint(
@@ -1040,6 +1151,10 @@ class _PlaygroundPageState extends State<PlaygroundPage> {
                       ],
                       selection: _inputSelection,
                       selectionOnFirst: _inputSelectionOnA,
+                      selectedArcCenter: _selectedArcCenter(),
+                      selectedArcColor: _inputSelectionOnA
+                          ? Colors.blue.shade700
+                          : Colors.orange.shade800,
                     ),
                   ),
                 ),
