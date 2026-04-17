@@ -30,6 +30,12 @@ class Geometry {
 
   /// Is [angle] within the angular range of an arc from [startAngle] to
   /// [endAngle] going in [clockwise] direction?
+  ///
+  /// Convention: y-down / screen coordinates (matching [ArcData.clockwise]).
+  /// In y-down screen space, `clockwise=true` means the arc sweeps in the
+  /// direction of INCREASING atan2 angle; `clockwise=false` means the arc
+  /// sweeps in the direction of DECREASING atan2 angle. (This is the
+  /// opposite of the standard y-up math convention.)
   bool angleInArcRange(
       double angle, double startAngle, double endAngle, bool clockwise) {
     // Normalize all angles
@@ -37,22 +43,22 @@ class Geometry {
     startAngle = normalizeAngle(startAngle);
     endAngle = normalizeAngle(endAngle);
 
+    // y-down screen coords: clockwise=true => atan2 angle increases
     if (clockwise) {
-      // Clockwise: angles decrease from start to end
-      // (in standard math coords where y-up, clockwise means decreasing angle)
-      if (startAngle >= endAngle) {
-        // Simple case: no wrap-around
-        return angle <= startAngle + eps.eps && angle >= endAngle - eps.eps;
-      } else {
-        // Wrap-around: goes from start, decreasing, past -pi, to end
-        return angle <= startAngle + eps.eps || angle >= endAngle - eps.eps;
-      }
-    } else {
-      // Counter-clockwise: angles increase from start to end
+      // Clockwise (screen): angles increase from start to end.
       if (endAngle >= startAngle) {
+        // Simple case: no wrap-around
         return angle >= startAngle - eps.eps && angle <= endAngle + eps.eps;
       } else {
+        // Wrap-around: goes from start, increasing, past +pi, to end
         return angle >= startAngle - eps.eps || angle <= endAngle + eps.eps;
+      }
+    } else {
+      // Counter-clockwise (screen): angles decrease from start to end.
+      if (startAngle >= endAngle) {
+        return angle <= startAngle + eps.eps && angle >= endAngle - eps.eps;
+      } else {
+        return angle <= startAngle + eps.eps || angle >= endAngle - eps.eps;
       }
     }
   }
