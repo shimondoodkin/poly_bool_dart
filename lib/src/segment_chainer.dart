@@ -71,7 +71,7 @@ class SegmentChainer {
 
       if (firstMatch == null) {
         // No match — start a new chain
-        chains.add(_Chain.fromSegment(pt1, pt2, seg.arc));
+        chains.add(_Chain.fromSegment(pt1, pt2, seg.arc, seg.userData));
         continue;
       }
 
@@ -98,14 +98,16 @@ class SegmentChainer {
             arcData != null) {
           arcData = arcData.reversed();
         }
+        // userData travels with the segment regardless of direction.
+        final segUserData = seg.userData;
 
         if (eps.pointsSame(addToHead ? chain.tail : chain.head, pt)) {
           // Closing the loop
           // Add the final edge's arc data
           if (addToHead) {
-            chain.prependPoint(pt, arcData);
+            chain.prependPoint(pt, arcData, segUserData);
           } else {
-            chain.appendPoint(pt, arcData);
+            chain.appendPoint(pt, arcData, segUserData);
           }
 
           // Build the region
@@ -113,9 +115,9 @@ class SegmentChainer {
           chains.removeAt(firstMatch.index);
         } else {
           if (addToHead) {
-            chain.prependPoint(pt, arcData);
+            chain.prependPoint(pt, arcData, segUserData);
           } else {
-            chain.appendPoint(pt, arcData);
+            chain.appendPoint(pt, arcData, segUserData);
           }
         }
         continue;
@@ -135,6 +137,8 @@ class SegmentChainer {
           arcData != null) {
         arcData = arcData.reversed();
       }
+      // userData travels with the segment regardless of direction.
+      final segUserData = seg.userData;
 
       final chainF = chains[F];
       final chainS = chains[S];
@@ -142,19 +146,19 @@ class SegmentChainer {
       if (firstMatch.matchesHead) {
         if (secondMatch.matchesHead) {
           chainS.reverse();
-          chainS.appendArcToChain(chainF, arcData);
+          chainS.appendArcToChain(chainF, arcData, segUserData);
           chains.removeAt(F);
         } else {
-          chainS.appendArcToChain(chainF, arcData);
+          chainS.appendArcToChain(chainF, arcData, segUserData);
           chains.removeAt(F);
         }
       } else {
         if (secondMatch.matchesHead) {
-          chainF.appendArcToChain(chainS, arcData);
+          chainF.appendArcToChain(chainS, arcData, segUserData);
           chains.removeAt(S);
         } else {
           chainS.reverse();
-          chainF.appendArcToChain(chainS, arcData);
+          chainF.appendArcToChain(chainS, arcData, segUserData);
           chains.removeAt(S);
         }
       }
@@ -178,44 +182,54 @@ class _ChainMatch {
 
 /// Internal chain structure that tracks points and arc data for edges.
 class _Chain {
-  // Points and arcs stored as parallel lists.
-  // points[i] is a vertex, arcs[i] is the arc data for edge from points[i] to points[i+1].
-  // arcs.length == points.length - 1 (or 0 if only 1 point).
+  // Points, arcs and userData stored as parallel lists.
+  // points[i] is a vertex, arcs[i] is the arc data for edge from points[i]
+  // to points[i+1], userData[i] is the caller-supplied tag for that edge.
+  // arcs.length == userData.length == points.length - 1 (or 0 if only 1 point).
   final List<Coordinate> points;
   final List<ArcData?> arcs;
+  final List<Object?> userData;
 
-  _Chain(this.points, this.arcs);
+  _Chain(this.points, this.arcs, this.userData);
 
-  factory _Chain.fromSegment(Coordinate p1, Coordinate p2, ArcData? arc) {
-    return _Chain([p1, p2], [arc]);
+  factory _Chain.fromSegment(
+      Coordinate p1, Coordinate p2, ArcData? arc, Object? ud) {
+    return _Chain([p1, p2], [arc], [ud]);
   }
 
   Coordinate get head => points.first;
   Coordinate get tail => points.last;
 
-  void appendPoint(Coordinate pt, ArcData? arcToNew) {
+  void appendPoint(Coordinate pt, ArcData? arcToNew, Object? ud) {
     arcs.add(arcToNew);
+    userData.add(ud);
     points.add(pt);
   }
 
-  void prependPoint(Coordinate pt, ArcData? arcFromNew) {
+  void prependPoint(Coordinate pt, ArcData? arcFromNew, Object? ud) {
     // arcFromNew describes the edge from pt -> current head
     arcs.insert(0, arcFromNew);
+    userData.insert(0, ud);
     points.insert(0, pt);
   }
 
   void reverse() {
     final revPoints = points.reversed.toList();
     final revArcs = arcs.reversed.map((a) => a?.reversed()).toList();
+    // userData has no intrinsic direction; just reverse the list order.
+    final revUserData = userData.reversed.toList();
     points.clear();
     points.addAll(revPoints);
     arcs.clear();
     arcs.addAll(revArcs);
+    userData.clear();
+    userData.addAll(revUserData);
   }
 
   /// Append another chain to the end of this one, with a connecting arc.
-  void appendArcToChain(_Chain other, ArcData? connectingArc) {
+  void appendArcToChain(_Chain other, ArcData? connectingArc, Object? ud) {
     arcs.add(connectingArc);
+    userData.add(ud);
     // Include all points of other — the first point is the destination
     // of the connecting arc, not a duplicate of our tail.
     for (int i = 0; i < other.points.length; i++) {
@@ -223,6 +237,9 @@ class _Chain {
     }
     for (int i = 0; i < other.arcs.length; i++) {
       arcs.add(other.arcs[i]);
+    }
+    for (int i = 0; i < other.userData.length; i++) {
+      userData.add(other.userData[i]);
     }
   }
 
@@ -254,7 +271,13 @@ class _Chain {
           return true;
         }(), 'arc emission endpoints must lie on the arc circle');
       }
-      vertices.add(ArcVertex(point: points[i], arcToNext: arcToNext));
+      // Convention: output ArcVertex[i].userData carries the userData of
+      // the edge that leaves vertex i (i.e. arcs[i] / userData[i]). This
+      // mirrors the input convention where ArcVertex.arcToNext / userData
+      // describe the edge LEAVING that vertex.
+      final ud = i < userData.length ? userData[i] : null;
+      vertices.add(
+          ArcVertex(point: points[i], arcToNext: arcToNext, userData: ud));
     }
     return ArcRegion(vertices);
   }

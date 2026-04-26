@@ -13,12 +13,18 @@ class Segment {
   /// When null, it is a straight line segment.
   ArcData? arc;
 
+  /// Opaque caller-supplied provenance tag. Threaded through boolean ops
+  /// so downstream consumers can trace which input edge produced an output
+  /// edge. Null when no provenance was supplied (the common case).
+  Object? userData;
+
   Segment({
     required this.start,
     required this.end,
     required this.myFill,
     this.otherFill,
     this.arc,
+    this.userData,
   });
 
   bool get isArc => arc != null;
@@ -83,7 +89,12 @@ class ArcVertex {
   final Coordinate point;
   final ArcData? arcToNext;
 
-  const ArcVertex({required this.point, this.arcToNext});
+  /// Opaque caller-supplied provenance tag. When set on input vertices it is
+  /// threaded through boolean ops and appears on output vertices that derive
+  /// from the same input edge. Null when no provenance was supplied.
+  final Object? userData;
+
+  const ArcVertex({required this.point, this.arcToNext, this.userData});
 
   @override
   String toString() => 'ArcVertex($point, arc: $arcToNext)';

@@ -54,13 +54,11 @@ class PolyBoolArcs {
     final i = Intersecter(true, _eps);
 
     for (final region in poly.regions) {
-      final hasArcs = region.vertices.any((v) => v.arcToNext != null);
-
-      if (hasArcs) {
-        i.addArcRegion(region.vertices);
-      } else {
-        i.addRegion(region.vertices.map((v) => v.point).toList());
-      }
+      // Always use addArcRegion so that userData on ArcVertex is propagated
+      // through the sweep-line into output segments. addArcRegion handles
+      // line-only regions correctly (arc == null branch) and closes the
+      // contour via modular indexing, so no separate addRegion path is needed.
+      i.addArcRegion(region.vertices);
     }
 
     var result = i.calculate(inverted: poly.inverted);

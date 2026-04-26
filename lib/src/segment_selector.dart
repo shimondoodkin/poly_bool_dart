@@ -22,6 +22,7 @@ class SegmentSelector {
             below: selection[index] == 2,
           ),
           arc: seg.arc,
+          userData: seg.userData,
         ));
       }
     }

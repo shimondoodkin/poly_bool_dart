@@ -19,8 +19,14 @@ class Intersecter {
 
   Intersecter(this.selfIntersection, this.eps) : geo = Geometry(eps);
 
-  Segment segmentNew(Coordinate start, Coordinate end, {ArcData? arc}) {
-    return Segment(start: start, end: end, myFill: SegmentFill(), arc: arc);
+  Segment segmentNew(Coordinate start, Coordinate end,
+      {ArcData? arc, Object? userData}) {
+    return Segment(
+        start: start,
+        end: end,
+        myFill: SegmentFill(),
+        arc: arc,
+        userData: userData);
   }
 
   Segment segmentCopy(Coordinate start, Coordinate end, Segment seg) {
@@ -29,6 +35,9 @@ class Intersecter {
       end: end,
       myFill: seg.myFill.copy(),
       arc: seg.arc,
+      // Preserve provenance through splits: a child segment inherits the
+      // parent's userData so callers can trace output edges back to input.
+      userData: seg.userData,
     );
   }
 
@@ -103,13 +112,19 @@ class Intersecter {
       final pt1 = v1.point;
       final pt2 = v2.point;
       final arc = v1.arcToNext;
+      // Convention: the edge from v1 to v2 carries v1's userData. This
+      // matches ArcVertex semantics (arcToNext describes the edge leaving
+      // this vertex), so userData from the originating vertex travels with
+      // that edge through the sweep-line.
+      final userData = v1.userData;
 
       if (arc == null) {
         // Line segment
         final forward = eps.pointsCompare(pt1, pt2);
         if (forward == 0) continue;
         eventAddSegment(
-          segmentNew(forward < 0 ? pt1 : pt2, forward < 0 ? pt2 : pt1),
+          segmentNew(forward < 0 ? pt1 : pt2, forward < 0 ? pt2 : pt1,
+              userData: userData),
           true,
         );
       } else {
@@ -122,7 +137,7 @@ class Intersecter {
         final snap1 = _snapToArcCircle(pt1, arc.center, arc.radius);
         final snap2 = _snapToArcCircle(pt2, arc.center, arc.radius);
         // Arc segment — split at y-extremes for sweep-line correctness
-        _addArcSubSegments(snap1, snap2, arc);
+        _addArcSubSegments(snap1, snap2, arc, userData: userData);
       }
     }
   }
@@ -147,7 +162,8 @@ class Intersecter {
   /// x-extreme points, then add each sub-arc as a segment.
   /// This ensures each sub-arc is y-monotone, making the sweep-line
   /// status ordering correct.
-  void _addArcSubSegments(Coordinate pt1, Coordinate pt2, ArcData arc) {
+  void _addArcSubSegments(Coordinate pt1, Coordinate pt2, ArcData arc,
+      {Object? userData}) {
     // Find the extreme points of the arc that lie between pt1 and pt2
     final c = arc.center;
     final r = arc.radius;
@@ -217,7 +233,8 @@ class Intersecter {
         subArc = arc.reversed();
       }
 
-      eventAddSegment(segmentNew(start, end, arc: subArc), true);
+      eventAddSegment(
+          segmentNew(start, end, arc: subArc, userData: userData), true);
     }
   }
 
